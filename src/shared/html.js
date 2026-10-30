@@ -46,7 +46,12 @@ export function parseHtml(src) {
   const addText = (text) => {
     if (text) top().children.push({ tag: '#text', text: decodeEntities(text), parent: top() });
   };
-  /** @param {(tag: string) => boolean} stopAt  pop open elements until a stop tag */
+  /**
+   * Close the nearest open element matching `closes`, unless a `stopAt` element is
+   * nearer (an inner table boundary).
+   * @param {(tag: string) => boolean} closes
+   * @param {(tag: string) => boolean} stopAt
+   */
   const popWhile = (closes, stopAt) => {
     for (let i = stack.length - 1; i > 0; i--) {
       const t = stack[i].tag;
