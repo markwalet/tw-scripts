@@ -7,6 +7,9 @@
 // per click, the failure path (game error, bot protection, no answer) and the fallback.
 // mobile-sitter: TW mobile + sitting, 360 px wide window, TW-like Dialog stub: no horizontal
 // scroll, send buttons on screen and tap-sized, no auto-focus, `&t=` on every own GET.
+// Review fixes: TribalWars.post throwing is never re-sent; the fallback waits for open
+// requests and offers unconfirmed targets; an open settings input survives re-renders;
+// a cached config keeps its time; a failed start retries on Calculate; two runs share 5/s.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
