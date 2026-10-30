@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeTranslator, fill } from '../../src/package-planner/core/i18n.js';
+import { makeTranslator, fill, plural } from '../../src/package-planner/core/i18n.js';
 
 test('planner i18n: fills placeholders and leaves unknown ones', () => {
   const t = makeTranslator('en');
@@ -15,4 +15,13 @@ test('planner i18n: the summary says the total is storable, split into now and f
     '71 packages storable after everything arrives (17 already now, 54 from these transports)',
   );
   assert.equal(t('storableAfterOne'), '1 package storable after everything arrives');
+});
+
+test('planner i18n: the noble target line is singular for one noble', () => {
+  const t = makeTranslator('en');
+  assert.equal(plural(t, 'nobleTarget', 1, { packages: 72, missing: 57 }), '1 noble = 72 packages, 57 still missing');
+  assert.equal(plural(t, 'nobleTarget', 5, { packages: 370, missing: 355 }), '5 nobles = 370 packages, 355 still missing');
+  assert.equal(plural(t, 'fromVillages', 3), 'from 3 villages');
+  assert.equal(plural(t, 'rowLine', 1, { time: '0:12:00' }), '1 merchant · arrival in 0:12:00');
+  assert.equal(plural(t, 'rowLine', 1200, { time: '1:00:00' }), '1.200 merchants · arrival in 1:00:00');
 });

@@ -1,4 +1,4 @@
-// package-planner/ui/popup.js — the planner popup (layout B of the prototype, native TW
+// package-planner/ui/popup.js — the planner popup (spec §1 layout B, native TW
 // look). The dialog is shown ONCE; every render() replaces the contents of one host
 // element (re-calling Dialog.show closes and fades the dialog in again, which is slow).
 // TW-specific calls (showing the dialog) come in through `deps`, from the adapter.
@@ -6,9 +6,10 @@
 // one-column cards with a full-width tap-sized send button, no auto-focus.
 
 import { h, injectStyle } from '../../shared/dom.js';
-import { fill } from '../core/i18n.js';
+import { fill, plural } from '../core/i18n.js';
 import { fmt, hm, hms } from '../core/plan-view.js';
 import { requestPayload, transportPayload, fallbackRows } from '../core/send.js';
+import { RES } from '../core/world-config.js';
 
 /** Click lock after each send (approved-scripts pattern): holding Enter = one send per lock. */
 const LOCK_MS = 200;
@@ -147,8 +148,8 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
       h('div', {}, [h('b', { text: from.name }), ` (${from.x}|${from.y}) → `, h('b', { text: to.name }), ` (${to.x}|${to.y})`]),
       sendButton(r.key, t('send'), () => click(r.key, () => post('map_send', tr.from, transportPayload(tr)))),
       h('div', { className: 'pp-muted' }, [
-        res('wood', tr.res[0]), ' ', res('stone', tr.res[1]), ' ', res('iron', tr.res[2]),
-        ` · ${fill(t('rowLine'), { merchants: tr.merchants, time: hms(tr.seconds) })}`,
+        ...resources(tr.res),
+        `· ${plural(t, 'rowLine', tr.merchants, { time: hms(tr.seconds) })}`,
       ]),
     ]);
   }
@@ -166,9 +167,6 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     ]);
   }
 
-  /** Singular/plural label: `key` with {n}, or `keyOne` for 1. */
-  const count = (/** @type {string} */ key, /** @type {number} */ n) => (n === 1 ? t(`${key}One`) : fill(t(key), { n: fmt(n) }));
-
   async function copyDebug() {
     const text = debugText();
     try {
@@ -183,8 +181,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
 
   const storeLink = () => h('a', { className: 'pp-link', href: storeUrl, text: t('academyStore') });
 
-  /** @param {'wood' | 'stone' | 'iron'} k @param {number} n */
-  const res = (k, n) => h('span', { className: 'pp-res', title: t(k) }, [h('span', { className: `icon header ${k}` }), fmt(n)]);
+  /** Wood/clay/iron amounts with TW's icons, each followed by a space. @param {number[]} amounts */
+  const resources = (amounts) => RES.flatMap((k, i) => [
+    h('span', { className: 'pp-res', title: t(k) }, [h('span', { className: `icon header ${k}` }), fmt(amounts[i])]), ' ',
+  ]);
 
   /** @param {Card} c */
   function card(c) {
@@ -193,10 +193,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     return h('div', { className: greyed(c.id), 'data-village': c.id }, [
       h('div', {}, [h('b', { text: c.name }), ' ', h('span', { className: 'pp-muted', text: `(${c.x}|${c.y})` })]),
       sendButton(c.id, t('request'), () => click(c.id, () => post('call', c.id, requestPayload(tr, c.id)))),
-      h('div', {}, [h('span', { className: 'pp-badge', text: count('cardPackages', c.packages) })]),
+      h('div', {}, [h('span', { className: 'pp-badge', text: plural(t, 'cardPackages', c.packages) })]),
       h('div', { className: 'pp-muted' }, [
-        res('wood', c.res.wood), ' ', res('stone', c.res.stone), ' ', res('iron', c.res.iron),
-        ` · ${count('fromVillages', c.sources)} · `,
+        ...resources(RES.map((k) => c.res[k])),
+        `· ${plural(t, 'fromVillages', c.sources)} · `,
         h('span', { title: far, text: fill(t('cardLastArrival'), { time: hm(c.lastArrivalSeconds) }) }),
       ]),
     ]);
@@ -208,7 +208,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     const sentCount = [...send.status.values()].filter((s) => s === 'sent').length;
     const g = v.target;
     const headline = [
-      h('b', { text: count('storableAfter', summary.packages) }),
+      h('b', { text: plural(t, 'storableAfter', summary.packages) }),
       summary.storableNow ? fill(t('storableSplit'), { now: fmt(summary.storableNow), added: fmt(summary.fromTransports) }) : '',
       g ? fill(t('storedTotal'), { n: fmt(g.stored + summary.packages) }) : '',
       ' → ',
@@ -216,7 +216,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     ];
     return [
       h('div', { className: 'pp-summary' }, [
-        g ? h('span', { text: fill(t('nobleTarget'), { ...g, n: fmt(g.packages), m: fmt(g.missing) }) }) : null,
+        g ? h('span', { text: plural(t, 'nobleTarget', g.x, { packages: fmt(g.packages), missing: fmt(g.missing) }) }) : null,
         h('span', {}, headline),
         cards.length
           ? h('span', { text: fill(t('lastArrival'), { time: hm(summary.lastArrivalSeconds), sent: sentCount, total: send.rows ? send.rows.length : cards.length }) })

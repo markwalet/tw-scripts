@@ -8,6 +8,9 @@ import { parseHtml, find, childElements, textOf } from '../../shared/html.js';
 
 /** @typedef {{ wood: number, stone: number, iron: number }} Cost */
 
+/** The three market resources, in TW's order ("stone" is clay). */
+export const RES = /** @type {const} */ (['wood', 'stone', 'iron']);
+
 /** Used only when the config can't be read; always surfaced as a warning. */
 export const DEFAULT_PACKAGE_COST = Object.freeze({ wood: 28000, stone: 30000, iron: 25000 });
 

@@ -4,8 +4,9 @@
 // the edit form's parsing and the collapsed one-line summary. Pure (storage is injected).
 
 import { createSettingsStore } from '../../shared/settings-store.js';
-import { fill } from './i18n.js';
+import { fill, plural } from './i18n.js';
 import { fmt, hm, hms } from './plan-view.js';
+import { RES } from './world-config.js';
 
 /**
  * @typedef {{
@@ -106,7 +107,7 @@ export function readForm(f, current) {
     return keep;
   };
   const maxTravelSeconds = take('maxTravel', parseDuration(f.maxTravel.trim()), current.maxTravelSeconds);
-  const reserve = /** @type {const} */ (['wood', 'stone', 'iron']).map((k, i) => take(k, parseCount(f[k].trim()), current.reserve[i]));
+  const reserve = RES.map((k, i) => take(k, parseCount(f[k].trim()), current.reserve[i]));
   const keepMerchants = take('keepMerchants', parseCount(f.keepMerchants.trim()), current.keepMerchants);
   const bufferPct = take('bufferPct', parsePct(f.bufferPct.trim()), current.bufferPct);
   const nobles = take('nobles', parseCount(f.nobles.trim()), current.nobles) || null;
@@ -145,7 +146,7 @@ export function settingsLine(s, t) {
   return [
     s.maxTravelSeconds == null ? t('noTravelLimit') : fill(t('settingMax'), { time: duration(s.maxTravelSeconds) }),
     fill(t('settingReserve'), { wood, stone, iron }),
-    s.keepMerchants === 1 ? t('settingKeepOne') : fill(t('settingKeep'), { n: fmt(s.keepMerchants) }),
+    plural(t, 'settingKeep', s.keepMerchants),
     fill(t('settingBuffer'), { pct: s.bufferPct }),
     `${groupName(s, s.senderGroup, t)} → ${groupName(s, s.receiverGroup, t)}`,
   ].concat(s.nobles ? fill(t('settingNobles'), { n: s.nobles }) : []).join(' · ');

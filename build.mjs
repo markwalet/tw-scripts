@@ -1,4 +1,4 @@
-// Build: bundle src/ into two single, NON-minified, readable IIFEs:
+// Build: bundle src/ into two single, NON-minified, readable scripts (each one IIFE):
 //   dist/timetool2.js        (entry src/bootstrap.js)
 //   dist/package-planner.js  (entry src/package-planner/bootstrap.js)
 // Readable output is a hard requirement — TW reviewers read the hosted files.
@@ -10,7 +10,8 @@
 // This aliases the `@renderer` import to the chosen file. The planner has no renderer.
 
 import * as esbuild from 'esbuild';
-import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,21 @@ if (!VALID_RENDERERS.includes(rendererArg)) {
   process.exit(1);
 }
 
+// JSDoc casts (`/** @type {X} */ (expr)`) and tag-only JSDoc (`/** @param … */`) are for
+// checkJs; esbuild keeps some of them, and in the shipped file they only name types that
+// aren't there. Drop them before bundling (comments only; the code is untouched).
+const TYPE_ONLY_JSDOC = /\/\*\*\s*@(?:type|param|returns?)\b[^*]*\*\//g;
+/** @type {import('esbuild').Plugin} */
+const stripTypeComments = {
+  name: 'strip-type-comments',
+  setup(build) {
+    build.onLoad({ filter: /[\\/]src[\\/].*\.js$/ }, async (args) => ({
+      contents: (await readFile(args.path, 'utf8')).replace(TYPE_ONLY_JSDOC, ''),
+      loader: 'js',
+    }));
+  },
+};
+
 /** @type {import('esbuild').BuildOptions} */
 const common = {
   bundle: true,
@@ -32,6 +48,7 @@ const common = {
   minify: false,
   legalComments: 'none',
   charset: 'utf8',
+  plugins: [stripTypeComments],
 };
 
 // The banner is the ONE block guaranteed to ship (esbuild strips most other comments
@@ -58,32 +75,46 @@ const timetool2 = {
   },
 };
 
+// The planner is bundled flat (format esm, no imports/exports left) inside our own
+// `(() => { … })();` wrapper: same scoping as esbuild's iife, minus one indent level on
+// every line (≈ 4 KB). The wrapper keeps every name out of the page's global scope.
 /** @type {import('esbuild').BuildOptions} */
-const packagePlanner = {
+export const plannerOptions = {
   ...common,
+  format: 'esm',
   entryPoints: [resolve(__dirname, 'src/package-planner/bootstrap.js')],
   outfile: resolve(__dirname, 'dist/package-planner.js'),
+  footer: { js: '})();' },
   banner: {
     js: [
       `// Noble Package Planner — TribalWars (classic worlds) market-transport planner.`,
       `// Plans transports between your own villages so academy villages can store as many`,
-      `// complete noble packages as possible. One click = one action: every transport is a`,
-      `// manual click; nothing is sent, stored or trained automatically. One click = one`,
-      `// market request (Request resources for one target, or one transport as fallback);`,
-      `// buttons lock 200 ms after each click, no retries. Reads premium`,
-      `// overviews and the public world config (read-only), throttled to <= 5 requests/s.`,
-      `// No external calls beyond TribalWars itself.`,
+      `// complete noble packages as possible.`,
+      `// One click = one action: each button sends ONE market request for one target (TW's`,
+      `// "Request resources"; one transport per click in the fallback), only when you click`,
+      `// it. Buttons lock 200 ms after a click; nothing is retried, repeated, stored, minted`,
+      `// or trained automatically.`,
+      `// Network: read-only GETs of the premium overviews, the public world config and (only`,
+      `// with a noble target) one academy page, plus the market requests you click — all to`,
+      `// this TribalWars world, through one queue of <= 5 requests/s. No external calls.`,
       `// Built from source; do not edit dist/ by hand. Design: DESIGN-package-planner.md.`,
+      `(() => {`,
+      `"use strict";`,
     ].join('\n'),
   },
 };
 
 const builds = [
   { name: `dist/timetool2.js (renderer: ${rendererArg})`, options: timetool2 },
-  { name: 'dist/package-planner.js', options: packagePlanner },
+  { name: 'dist/package-planner.js', options: plannerOptions },
 ];
 
-if (watch) {
+// Imported (the bundle audit test) -> only export the options; run as a script -> build.
+const isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href;
+
+if (!isMain) {
+  // nothing to do
+} else if (watch) {
   for (const { options } of builds) {
     const ctx = await esbuild.context(options);
     await ctx.watch();
