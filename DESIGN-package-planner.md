@@ -91,6 +91,10 @@ src/
 - **English only** for v1; every label goes through the i18n table so a language is
   only a table entry. Data parsing is language-independent (ids, attributes, numbers —
   never translated header text).
+- **Size budget**: the shipped `dist/package-planner.js` stays readable and in line with
+  other TW scripts: target ≤ ~60 KB, hard limit ~80 KB (timetool2 ≈ 43 KB, Shinko's
+  Warehouse Balancer ≈ 92 KB, the old resources balancer ≈ 126 KB). No large LP/MILP
+  library in the bundle.
 - Requests go through the shared queue, throttled to **≤ 5 requests/s** (200 ms spacing,
   the approval-thread limit; RedAlert's SDK uses the same).
 
@@ -205,6 +209,16 @@ nearby surplus); sends under 700 dropped and remainders cut after they were alre
 off the books. It also calls `api.counterapi.dev` with the player id. Other approved
 senders (Shinko's balancer and minting sender, SaveBank's Advanced Resource Sender) are
 greedy as well; none maximises account-wide packages.
+
+## User test checkpoints (non-blocking)
+
+The user has no way to hand us live pages up front, so three paste tests on their world
+validate what can't be checked offline. Other work carries on; results come back as fixes.
+
+1. After the tracer bullet: do the parsers read the real Production/Buildings overviews?
+   (check the "storable now" number; "Copy debug info" if off)
+2. After the plan cards: is the plan plausible; do travel times match the market page?
+3. After sending: one real, small send; record what the game returns.
 
 ## Open / verify on a live page
 
