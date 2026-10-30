@@ -28,6 +28,7 @@ function overviewLine(label, s) {
  *   config?: { gold: boolean | null, packageCost: { wood: number, stone: number, iron: number }, speed: number | null, unitSpeed: number | null, warnings: string[] } | null,
  *   prod?: { byId: Map<number, any>, warnings: string[], structure: any } | null,
  *   buildings?: { byId: Map<number, number>, warnings: string[], structure: any } | null,
+ *   incoming?: { warnings: string[], structure: any } | null,
  *   result?: { packages: number, academies: number, villages: number, notInBuildings: number } | null,
  *   plan?: { packages: number, cards: number, transports: number, merchants: number, longestSeconds: number, ms: number } | null,
  *   refused?: string | null,
@@ -53,6 +54,10 @@ export function buildDebugInfo(r) {
     for (const l of r.buildings.byId.values()) hist[l] = (hist[l] || 0) + 1;
     lines.push(`academy levels: ${Object.entries(hist).map(([l, n]) => `${l}:${n}`).join(' ')}`);
   }
+  const inc = r.incoming?.structure;
+  lines.push(!inc ? 'trader incoming: not loaded'
+    : `trader incoming: rows ${inc.rows}, pages linked ${inc.pagesLinked}, ${inc.transports} transports to ${inc.targets} villages`);
+  if (inc?.firstRow) lines.push(`trader first row: ${inc.firstRow}`);
   if (r.result) {
     const x = r.result;
     lines.push(`storable now: ${x.packages} packages in ${x.academies} academies (${x.villages} villages, ${x.notInBuildings} missing from buildings)`);
@@ -61,7 +66,7 @@ export function buildDebugInfo(r) {
     const p = r.plan;
     lines.push(`plan: ${p.packages} packages, ${p.cards} targets, ${p.transports} transports, ${p.merchants} merchants, longest ${p.longestSeconds} s, solved in ${p.ms} ms`);
   }
-  const warnings = [...(r.config?.warnings || []), ...(r.prod?.warnings || []), ...(r.buildings?.warnings || [])];
+  const warnings = [...(r.config?.warnings || []), ...(r.prod?.warnings || []), ...(r.buildings?.warnings || []), ...(r.incoming?.warnings || [])];
   lines.push(warnings.length ? `warnings:\n- ${warnings.map(scrub).join('\n- ')}` : 'warnings: none');
   if (r.error) lines.push(`error: ${scrub(r.error)}`);
   return lines.join('\n');

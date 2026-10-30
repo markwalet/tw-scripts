@@ -12,6 +12,7 @@ import { parseHtml, find, findAll, textOf, hasClass, intOf, is } from '../../sha
 import { pageNumbers, rowShape } from './overview.js';
 
 /** @typedef {[number, number, number]} Res */
+/** @typedef {import('../../shared/html.js').El} El */
 
 const RES = ['wood', 'stone', 'iron'];
 const VILLAGE_LINK = /[?&]screen=info_village\b.*?[?&]id=(\d+)/;
@@ -27,15 +28,17 @@ export function parseIncoming(html) {
   const table = find(root, is({ tag: 'table', id: 'trades_table' }));
   if (!table) return { transports, pages, warnings, structure: { tableFound: false, rows: 0 } };
 
-  const rows = findAll(table, (el) => el.tag === 'tr' && !!find(el, is({ tag: 'td' })) && !!find(el, (e) => VILLAGE_LINK.test(e.attrs.href || '')));
+  const villageLink = (/** @type {El} */ e) => e.tag === 'a' && VILLAGE_LINK.test(e.attrs.href || '');
+  const rows = findAll(table, (el) => el.tag === 'tr' && !!find(el, villageLink));
   let skipped = 0;
   for (const tr of rows) {
-    const links = findAll(tr, (e) => e.tag === 'a' && VILLAGE_LINK.test(e.attrs.href || ''));
-    const to = parseInt(/** @type {RegExpExecArray} */ (VILLAGE_LINK.exec(links[links.length - 1].attrs.href))[1], 10);
-    const res = /** @type {Res} */ (RES.map((k) => {
+    const links = findAll(tr, villageLink);
+    const to = parseInt(VILLAGE_LINK.exec(links[links.length - 1].attrs.href)[1], 10);
+    /** @type {Res} */
+    const res = RES.map((k) => {
       const el = find(tr, (e) => hasClass(e, k));
       return el ? intOf(textOf(el.parent || el)) : 0;
-    }));
+    });
     if (res.some((n) => !Number.isFinite(n))) {
       skipped += 1;
       continue;
@@ -60,7 +63,7 @@ export async function loadIncoming({ fetchPage }) {
   const byId = new Map();
   for (const { to, res } of parsed.flatMap((x) => x.transports)) {
     const sum = byId.get(to) || [0, 0, 0];
-    byId.set(to, /** @type {Res} */ (sum.map((n, k) => n + res[k])));
+    byId.set(to, sum.map((n, k) => n + res[k]));
   }
   return {
     byId,
