@@ -5,6 +5,7 @@ import { verifyPlan } from './fixtures/verify-plan.js';
 import { generateTinyWorld } from './fixtures/world-gen.js';
 import { bruteForce, planModelCost } from './fixtures/brute-force.js';
 import { balancerFailures } from './fixtures/balancer-failures.js';
+import { academyHeavy } from './fixtures/academy-heavy.js';
 
 /** Shorthand village: id, coords, resources, merchants; full 400k warehouse. */
 const village = (id, x, y, res, merchants = 100, extra = {}) => ({
@@ -128,6 +129,13 @@ test('tiny random worlds: package count equals the brute-force optimum', () => {
     if (cost > best.cost) notCheapest++;
   }
   assert.ok(notCheapest <= 4, `${notCheapest} of 400 worlds not cost-optimal`);
+});
+
+test('a real account where nearly every village has an academy: leftovers pooled across all of them', () => {
+  // 72 = the unpruned solver on this world (every source may ship to every academy); the
+  // whole-load iron bound is 73. Shipping only to each source's 20 nearest academies got 58.
+  const { world, options } = academyHeavy;
+  assert.equal(solveValid(world, options).packages, 72);
 });
 
 for (const [name, { world, options, expected }] of Object.entries(balancerFailures)) {
