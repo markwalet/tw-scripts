@@ -17,10 +17,20 @@ import { RES } from './world-config.js';
 
 const VILLAGE_LINK = /[?&]screen=info_village\b.*?[?&]id=(\d+)/;
 
+/**
+ * A transport's identity across pages: its `cancel[]` checkbox value (TW's transport id);
+ * without one, the row's content minus the ticking "arrives in" countdown.
+ * @param {El} tr @param {number} to @param {Res} res
+ */
+function transportKey(tr, to, res) {
+  const id = find(tr, (e) => e.tag === 'input' && e.attrs.name === 'cancel[]' && !!e.attrs.value)?.attrs.value;
+  return id ? `#${id}` : `${to}|${res}|${textOf(tr).replace(/\b\d+:\d\d:\d\d\b/g, '').replace(/\s+/g, ' ').trim()}`;
+}
+
 /** @param {string} html */
 export function parseIncoming(html) {
   const root = parseHtml(html);
-  /** @type {{ to: number, res: Res }[]} */
+  /** @type {{ key: string, to: number, res: Res }[]} */
   const transports = [];
   /** @type {string[]} */
   const warnings = [];
@@ -43,7 +53,7 @@ export function parseIncoming(html) {
       skipped += 1;
       continue;
     }
-    transports.push({ to, res });
+    transports.push({ key: transportKey(tr, to, res), to, res });
   }
   if (skipped) warnings.push(`trader: ${skipped} of ${rows.length} rows skipped (amount not readable)`);
   return { transports, pages, warnings, structure: { tableFound: true, rows: rows.length, firstRow: rows[0] ? rowShape(rows[0]) : null } };
@@ -51,23 +61,28 @@ export function parseIncoming(html) {
 
 /**
  * Everything on the way, summed per target village. Asks for page=-1 ("all"); when the
- * list links pages, reads those instead (each row sits on exactly one page, whether or not
- * TW honoured page=-1). The caller's fetchPage goes through the throttled queue.
+ * list links pages, reads those too. The first answer always counts: when TW ignored
+ * page=-1 it is the current page, which the nav shows unlinked. Rows seen on more than one
+ * page (TW honoured page=-1 and still links the pages) count once, by transport key.
+ * The caller's fetchPage goes through the throttled queue.
  * @param {{ fetchPage: (page: number) => Promise<string> }} opts
  */
 export async function loadIncoming({ fetchPage }) {
   const first = parseIncoming(await fetchPage(-1));
-  const parsed = first.pages.length ? [] : [first];
+  const parsed = [first];
   for (const p of first.pages) parsed.push(parseIncoming(await fetchPage(p)));
   /** @type {Map<number, Res>} */
   const byId = new Map();
-  for (const { to, res } of parsed.flatMap((x) => x.transports)) {
+  const seen = new Set();
+  for (const { key, to, res } of parsed.flatMap((x) => x.transports)) {
+    if (seen.has(key)) continue;
+    seen.add(key);
     const sum = byId.get(to) || [0, 0, 0];
-    byId.set(to, sum.map((n, k) => n + res[k]));
+    byId.set(to, /** @type {Res} */ (sum.map((n, k) => n + res[k])));
   }
   return {
     byId,
     warnings: [...new Set(parsed.flatMap((x) => x.warnings))],
-    structure: { ...first.structure, pagesLinked: first.pages.length, transports: parsed.reduce((n, x) => n + x.transports.length, 0), targets: byId.size },
+    structure: { ...first.structure, pagesLinked: first.pages.length, transports: seen.size, targets: byId.size },
   };
 }

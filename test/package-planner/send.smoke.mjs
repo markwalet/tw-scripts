@@ -7,6 +7,9 @@
 // per click, the failure path (game error, bot protection, no answer) and the fallback.
 // mobile-sitter: TW mobile + sitting, 360 px wide window, TW-like Dialog stub: no horizontal
 // scroll, send buttons on screen and tap-sized, no auto-focus, `&t=` on every own GET.
+// Review fixes: TribalWars.post throwing is never re-sent; the fallback waits for open
+// requests and offers unconfirmed targets; an open settings input survives re-renders;
+// a cached config keeps its time; a failed start retries on Calculate; two runs share 5/s.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -49,21 +52,34 @@ function stubs(fx, scenario) {
       document.body.appendChild(box);
     } };
   }
+  if (scenario.name === 'config-cache') {
+    window.__cachedAt = Date.now() - 23 * 3600 * 1000; // cached 23 h ago: still valid, must not be renewed
+    localStorage.setItem('en1pp_config', JSON.stringify({ at: window.__cachedAt, xml: fx.config }));
+  }
+  window.__getTimes = [];
+  let configFails = scenario.configFails || 0;
   window.fetch = async (url) => {
     window.__gets.push(String(url));
+    window.__getTimes.push(performance.now());
+    if (url.includes('get_config') && configFails > 0) {
+      configFails -= 1;
+      return { ok: false, status: 500, text: async () => '' };
+    }
     const text = url.includes('get_config') ? fx.config : url.includes('mode=prod') ? fx.prod : url.includes('mode=buildings') ? fx.buildings : url.includes('screen=snob') ? fx.academy : '';
     return { ok: true, status: 200, text: async () => text };
   };
   window.TribalWars = {
     post(screen, params, data, onSuccess, onError) {
       const n = window.__posts.push({ screen, params, data });
-      const fail = scenario.failAt === n;
+      if (scenario.throwAt === n) throw new Error('TribalWars.post broke'); // TW changed: throws before sending
+      const slow = scenario.slowAt === n;
+      const fail = scenario.failAt === n || (slow && scenario.slowKind === 'game');
       if (fail && scenario.kind === 'noAnswer') return; // like HTTP 429/503: no callback at all
       setTimeout(() => {
         if (!fail) onSuccess({ success: 'Resources requested' });
         else if (scenario.kind === 'captcha') onError();
         else onError('Not enough merchants');
-      }, 50);
+      }, slow ? 1000 : 50);
     },
   };
 }
@@ -77,9 +93,78 @@ async function driver(scenario) {
   const ids = () => $$('.pp-card').map((c) => c.getAttribute('data-village'));
   const sendButtons = () => $$('.pp-card button.pp-send');
   try {
-    await until(() => $$('.pp-calc button').length);
+    await until(() => $$('.pp-calc button').length && !$$('.pp-calc button')[0].disabled);
+    if (scenario.name === 'config-cache') {
+      check('valid cached config used, not fetched', !window.__gets.some((u) => u.includes('get_config')), window.__gets);
+      const at = JSON.parse(localStorage.getItem('en1pp_config') || '{}').at;
+      check('cache time not renewed from a cache read (TTL still expires)', at === window.__cachedAt, { at, was: window.__cachedAt });
+      throw 'done';
+    }
+    if (scenario.configFails) {
+      await until(() => $$('.pp-error').length);
+      check('config fetch failed: error shown with the Calculate button', $$('.pp-error').length === 1 && $$('.pp-calc button').length === 1);
+      $$('.pp-calc button')[0].click();
+      await until(() => $$('.pp-card').length);
+      check('Calculate retries the start and plans', $$('.pp-card').length >= 3 && window.__gets.filter((u) => u.includes('get_config')).length === 3, window.__gets);
+      throw 'done';
+    }
+    if (scenario.twice) {
+      await until(() => $$('.pp-calc button').length === 2);
+      $$('.pp-calc button').forEach((b) => b.click());
+      await until(() => $$('.pp-cards').length === 2);
+      const times = [...window.__getTimes].sort((a, b) => a - b);
+      const gaps = times.slice(1).map((x, i) => x - times[i]);
+      check('script run twice: still ≤ 5 requests/s (one queue for both runs)', gaps.length >= 6 && gaps.every((g) => g >= 190), gaps.map(Math.round));
+      throw 'done';
+    }
     $$('.pp-calc button')[0].click();
     await until(() => $$(scenario.nobles ? '.pp-summary' : '.pp-card').length);
+    if (scenario.name === 'hold-enter') {
+      const cached = JSON.parse(localStorage.getItem('en1pp_config') || 'null');
+      check('fetched config cached', cached && typeof cached.xml === 'string' && Math.abs(Date.now() - cached.at) < 60000, cached && cached.at);
+    }
+    if (scenario.throwAt) {
+      await sleep(300);
+      sendButtons()[0].click();
+      await sleep(1000); // the queue's retry would come >= 200 ms later
+      check('TribalWars.post throwing: tried once, never re-sent', window.__posts.length === 1, window.__posts.length);
+      const err = $$('.pp-error').map((e) => e.textContent).join(' ');
+      check('TribalWars.post throwing: failure shown, nothing more to send', err.length > 0 && sendButtons().length === 0, err);
+      throw 'done';
+    }
+    if (scenario.slowAt) {
+      const before = ids();
+      await sleep(300);
+      sendButtons()[0].click(); // #1: answered after 1 s
+      await sleep(250);
+      sendButtons()[0].click(); // #2: game error after 50 ms
+      await sleep(150);
+      const fb = $$('button.pp-fallback')[0];
+      const err = $$('.pp-error').map((e) => e.textContent).join(' ');
+      check('fallback waits while a request is still open, and says so', fb && fb.disabled && /waiting/i.test(err), { fb: !!fb, disabled: fb?.disabled, err });
+      await sleep(1100);
+      const fb2 = $$('button.pp-fallback')[0];
+      check('fallback offered once every request answered', fb2 && !fb2.disabled);
+      fb2?.click();
+      await until(() => $$('.pp-card[data-to]').length);
+      const tos = new Set($$('.pp-card[data-to]').map((c) => c.getAttribute('data-to')));
+      check(scenario.slowKind === 'ok' ? 'fallback leaves out the target confirmed sent' : 'fallback offers the target whose open request then failed',
+        tos.has(before[0]) === (scenario.slowKind !== 'ok'), { tos: [...tos], before });
+      check('fallback offers the target that failed', tos.has(before[1]), { tos: [...tos], before });
+      throw 'done';
+    }
+    if (scenario.name === 'settings-focus') {
+      $$('.pp-link').find((a) => a.textContent === 'edit').click();
+      const input = $$('.pp-settings input')[0];
+      input.focus();
+      input.value = '1:3'; // typing, not committed (no change event yet)
+      await sleep(300);
+      sendButtons()[0].click(); // re-renders the popup: on click, on the answer, after the lock
+      await sleep(400);
+      check('re-render keeps the settings input, its focus and the typed text', input.isConnected && document.activeElement === input && input.value === '1:3',
+        { connected: input.isConnected, active: document.activeElement?.tagName, value: input.value });
+      throw 'done';
+    }
     if (scenario.nobles) {
       // Academy fixture: price 2, stored 3 -> 2 nobles = 2 + 3 = 5 packages, 2 still missing.
       const text = $$('.pp-summary')[0]?.textContent || '';
@@ -134,9 +219,11 @@ async function driver(scenario) {
     check('list keeps its length', after.length === before.length, after);
     check('sent card moved to the bottom', after[after.length - 1] === before[0] && after[0] === before[1], after);
     const last = $$('.pp-card').pop();
-    check('sent card greyed with ✓ Sent', last.classList.contains('pp-done') && last.textContent.includes('✓ Sent'), last.textContent);
+    check('clicked card greyed, sending (not yet answered)', last.classList.contains('pp-done') && last.textContent.includes('Sending'), last.textContent);
     check('all send buttons locked', sendButtons().every((b) => b.disabled));
     await sleep(250);
+    const answered = $$('.pp-card').pop();
+    check('answered card shows ✓ Sent', answered.textContent.includes('✓ Sent'), answered.textContent);
     check('unlocked after ~200 ms', sendButtons().every((b) => !b.disabled));
     check('focus moved to the next card', document.activeElement === sendButtons()[0] && document.activeElement.closest('.pp-card').getAttribute('data-village') === before[1]);
 
@@ -188,14 +275,22 @@ const scenarios = [
   { name: 'mobile-sitter' },
   { name: 'groups' },
   { name: 'noble-target', nobles: 2 },
+  { name: 'post-throws', throwAt: 1 },
+  { name: 'fallback-pending-ok', slowAt: 1, slowKind: 'ok', failAt: 2, kind: 'game' },
+  { name: 'fallback-pending-fails', slowAt: 1, slowKind: 'game', failAt: 2, kind: 'game' },
+  { name: 'settings-focus' },
+  { name: 'config-cache' },
+  { name: 'config-fails', configFails: 2 },
+  { name: 'run-twice', twice: true },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));
 let failed = 0;
 try {
   for (const s of scenarios) {
+    const run = `<script>${bundle.replace(/<\/script/gi, '<\\/script')}</script>`;
     const html = `<!doctype html><html><head><meta charset="utf-8"></head><body>
 <script>(${stubs})(${JSON.stringify(fx).replace(/</g, '\\u003c')}, ${JSON.stringify(s)});</script>
-<script>${bundle.replace(/<\/script/gi, '<\\/script')}</script>
+${s.twice ? run + run : run}
 <script>(${driver})(${JSON.stringify(s)});</script></body></html>`;
     const file = join(dir, `${s.name}.html`);
     // Headless Chrome won't shrink its window below 500 px: run the narrow case in a 360 px iframe.

@@ -53,17 +53,21 @@ export function createQueue({
   }
 
   /**
-   * Enqueue an async task. Retries up to maxAttempts on rejection.
+   * Enqueue an async task. Retries up to maxAttempts on rejection, unless `retry: false`
+   * (a request that must never be sent twice, e.g. a POST). A task that throws
+   * synchronously counts as a rejection.
    * @template T
    * @param {() => Promise<T>} task
+   * @param {{ retry?: boolean }} [opts]
    * @returns {Promise<T>}
    */
-  function add(task) {
+  function add(task, { retry = true } = {}) {
+    const attempts = retry ? maxAttempts : 1;
     return new Promise((resolve, reject) => {
       /** @param {number} n */
       const attempt = (n) => {
         active += 1;
-        task()
+        new Promise((r) => r(task()))
           .then((value) => {
             active -= 1;
             resolve(value);
@@ -71,7 +75,7 @@ export function createQueue({
           })
           .catch((err) => {
             active -= 1;
-            if (n < maxAttempts) {
+            if (n < attempts) {
               waiting.unshift(() => attempt(n + 1)); // retry at the front
             } else {
               reject(err);

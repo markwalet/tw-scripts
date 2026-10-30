@@ -27,8 +27,8 @@ export const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,
 /**
  * @param {Plan} plan
  * @param {Map<number, Place>} places  village id -> name + coords
- * @param {number} [storableNow]  packages the academies can store already, without transports
- *   (the solver total includes them)
+ * @param {number} [storableNow]  packages the academies can store without new transports
+ *   (held + on the way; the solver total includes them)
  * @returns {{ summary: { packages: number, storableNow: number, fromTransports: number,
  *   lastArrivalSeconds: number, cards: number, sent: number }, cards: Card[] }}
  */
@@ -60,11 +60,14 @@ export function planView(plan, places, storableNow = 0) {
     }
   }
   const list = [...cards.values()].sort((a, b) => a.lastArrivalSeconds - b.lastArrivalSeconds || a.id - b.id);
+  // A noble target caps the plan, possibly below what is storable already: never split
+  // off more than the total.
+  const already = Math.min(storableNow, plan.packages);
   return {
     summary: {
       packages: plan.packages,
-      storableNow,
-      fromTransports: Math.max(0, plan.packages - storableNow),
+      storableNow: already,
+      fromTransports: plan.packages - already,
       lastArrivalSeconds: list.reduce((m, c) => Math.max(m, c.lastArrivalSeconds), 0),
       cards: list.length,
       sent: 0,

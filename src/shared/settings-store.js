@@ -1,6 +1,7 @@
 // shared/settings-store.js — generic per-world settings store: versioned defaults,
 // migration, load/save, export/import. Each script supplies its own schema; this module
-// owns the plumbing. Pure-ish: storage is injected (pass a Map-like in tests).
+// owns the plumbing. Pure: storage is always injected (the adapter passes localStorage;
+// tests a Map-like).
 
 /**
  * @template {object} S
@@ -32,11 +33,17 @@ export function createSettingsStore({ name, version, defaults: makeDefaults, mig
     return { ...merged, version };
   }
 
+  /** shared/ stays pure: the adapter passes the storage in (never the global). @param {unknown} storage */
+  const need = (storage) => {
+    if (!storage) throw new TypeError(`[${name}] settings storage not passed in`);
+  };
+
   /**
    * @param {string} world
-   * @param {Pick<Storage, 'getItem'>} [storage]
+   * @param {Pick<Storage, 'getItem'>} storage
    */
-  function load(world, storage = localStorage) {
+  function load(world, storage) {
+    need(storage);
     try {
       const raw = storage.getItem(key(world));
       return migrate(raw ? JSON.parse(raw) : null);
@@ -48,9 +55,10 @@ export function createSettingsStore({ name, version, defaults: makeDefaults, mig
   /**
    * @param {string} world
    * @param {S} settings
-   * @param {Pick<Storage, 'setItem'>} [storage]
+   * @param {Pick<Storage, 'setItem'>} storage
    */
-  function save(world, settings, storage = localStorage) {
+  function save(world, settings, storage) {
+    need(storage);
     try {
       storage.setItem(key(world), JSON.stringify(settings));
     } catch (err) {

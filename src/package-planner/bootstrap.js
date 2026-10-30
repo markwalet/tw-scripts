@@ -40,7 +40,8 @@ const report = { env };
 let config = null;
 let busy = false;
 /** Saved per world (localStorage); edited in the popup, used by the next Calculate. */
-let settings = settingsStore.load(env.world);
+let settings = settingsStore.load(env.world, tw.storage());
+const saveSettings = () => settingsStore.save(env.world, settings, tw.storage());
 
 const popup = createPopup({
   t,
@@ -54,7 +55,7 @@ const popup = createPopup({
   settingsPanel: createSettingsPanel({
     t,
     get: () => settings,
-    save: (next) => { settings = next; settingsStore.save(env.world, next); },
+    save: (next) => { settings = next; saveSettings(); },
   }),
 });
 
@@ -89,25 +90,37 @@ function refused(gold) {
   return true;
 }
 
+/**
+ * Read the world config and check the preconditions. True = ready to calculate. When it
+ * fails (e.g. the config request), the error shows with the Calculate button, which runs
+ * this again first.
+ */
 async function start() {
+  config = null;
   popup.render({ status: 'starting' });
   try {
-    if (refused(null)) return; // before any request
-    const xml = await tw.worldConfigXml();
-    config = parseWorldConfig(xml);
-    report.config = config;
-    if (!config.warnings.length) tw.cacheWorldConfig(xml);
-    if (refused(config.gold)) return;
+    if (refused(null)) return false; // before any request
+    const { xml, cached } = await tw.worldConfigXml();
+    const parsed = parseWorldConfig(xml);
+    report.config = parsed;
+    // Only a fresh fetch is stored: re-storing a cache read would renew its day forever.
+    if (!cached && !parsed.warnings.length) tw.cacheWorldConfig(xml);
+    if (refused(parsed.gold)) return false;
+    config = parsed;
     popup.render({ status: 'ready' });
+    return true;
   } catch (err) {
     fail(err);
+    return false;
   }
 }
 
 async function calculate() {
-  if (busy || !config) return;
+  if (busy) return;
   busy = true;
   try {
+    if (!config && !(await start())) return;
+    const cfg = /** @type {NonNullable<typeof config>} */ (config); // set by start()
     popup.render({ status: 'loading' });
     const prodOf = (group = 0) =>
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('prod', p, group)), parse: prodEntries, expected: group ? null : env.villages, label: 'prod' });
@@ -128,14 +141,14 @@ async function calculate() {
     report.incoming = incoming;
     // The group list for the dropdowns comes with the Production overview (no extra request).
     if (prod.groups?.length) settings = { ...settings, groups: prod.groups };
-    settingsStore.save(env.world, settings);
+    saveSettings();
     const villages = [...prod.byId.values()];
     const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
     const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
-    const storable = storableNow(villages, academyLevels, config.packageCost, receivers);
+    const storable = storableNow(villages, academyLevels, cfg.packageCost, receivers, incoming.byId);
     report.result = storable;
 
-    const warnings = [...config.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
+    const warnings = [...cfg.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
     let target = null;
     const x = settings.nobles;
     const academy = x && [...academyLevels].find(([, level]) => level > 0);
@@ -147,7 +160,7 @@ async function calculate() {
 
     popup.render({ status: 'calculating' });
     await afterPaint();
-    const input = solverInput({ villages, academyLevels, mineLevels, incoming: incoming.byId, senders, receivers, config });
+    const input = solverInput({ villages, academyLevels, mineLevels, incoming: incoming.byId, senders, receivers, config: cfg });
     const t0 = performance.now();
     const plan = solve(input.world, { ...input.options, ...solverOptions(settings, target?.missing) });
     const ms = Math.round(performance.now() - t0);
@@ -175,4 +188,5 @@ async function calculate() {
   }
 }
 
-start();
+busy = true;
+start().finally(() => { busy = false; });

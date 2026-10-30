@@ -90,3 +90,28 @@ test('queue rejects once maxAttempts is used up', async () => {
   await assert.rejects(result, /down/);
   assert.equal(calls, 2);
 });
+
+test('queue: a task added with retry: false runs once, even when it fails (a POST is never re-sent)', async () => {
+  const clock = fakeClock();
+  const q = createQueue({ now: clock.now, setTimer: clock.setTimer, maxAttempts: 3 });
+  let calls = 0;
+  const result = q.add(async () => {
+    calls += 1;
+    throw new Error('post threw');
+  }, { retry: false });
+  result.catch(() => {});
+  await clock.drain();
+  await assert.rejects(result, /post threw/);
+  assert.equal(calls, 1);
+});
+
+test('queue: a synchronously throwing task rejects instead of stalling the queue', async () => {
+  const clock = fakeClock();
+  const q = createQueue({ now: clock.now, setTimer: clock.setTimer, maxAttempts: 1, concurrency: 1 });
+  const result = q.add(() => { throw new Error('sync'); });
+  result.catch(() => {});
+  const next = q.add(async () => 'next');
+  await clock.drain();
+  await assert.rejects(result, /sync/);
+  assert.equal(await next, 'next');
+});

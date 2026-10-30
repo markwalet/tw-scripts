@@ -54,6 +54,18 @@ test('settings store: load falls back to defaults on corrupt JSON', () => {
   assert.deepEqual(store.load('nl1', storage), store.defaults());
 });
 
+test('settings store: storage must be passed in, the global localStorage is never read', () => {
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage({ nl1demo: JSON.stringify({ size: 9 }) }), configurable: true, writable: true });
+  try {
+    assert.throws(() => store.load('nl1'), TypeError);
+    assert.throws(() => store.save('nl1', store.defaults()), TypeError);
+  } finally {
+    if (had) Object.defineProperty(globalThis, 'localStorage', had);
+    else delete globalThis.localStorage;
+  }
+});
+
 test('settings store: export/import round-trips; import throws on malformed JSON', () => {
   const s = { ...store.defaults(), size: 4 };
   const json = store.exportJSON(s);

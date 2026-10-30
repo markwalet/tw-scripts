@@ -53,6 +53,14 @@ test('planView: splits the total into storable now and what the transports add',
   assert.equal(view.summary.fromTransports, 54);
 });
 
+test('planView: a noble target caps the plan below what is storable already -> split never exceeds the total', () => {
+  // 40 storable without new transports, but the target needs only 12: the solver plans 12.
+  const view = planView({ ...plan, packages: 12 }, names, 40);
+  assert.equal(view.summary.packages, 12);
+  assert.equal(view.summary.storableNow, 12);
+  assert.equal(view.summary.fromTransports, 0);
+});
+
 test('planView: empty plan -> no cards, nothing to wait for', () => {
   const view = planView({ packages: 0, perAcademy: [], transports: [], merchants: 0, longestSeconds: 0, resourceHours: 0 }, names);
   assert.deepEqual(view, { summary: { packages: 0, storableNow: 0, fromTransports: 0, lastArrivalSeconds: 0, cards: 0, sent: 0 }, cards: [] });
