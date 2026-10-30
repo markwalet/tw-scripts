@@ -186,9 +186,10 @@ on synthetic fixtures. **(a) wins**; (b) is not kept in the codebase.
 merchant carrying `merchantCapacity` of one resource. A source ships whole units of what
 it holds above its reserve (a sub-1000 remainder per resource stays home; it is never
 planned, so never dropped from the books). An academy's deficit is rounded up to whole
-units, and the overshoot (< 1 unit per resource) is trimmed off its farthest delivery:
-the only partial merchant is the one that completes a package. Merchants reported per
-transport are `ceil(total / capacity)`, never more than the model counted. The reserve
+units, and the overshoot (< 1 unit per resource) is trimmed off its deliveries (see
+*Combined loads* below): the only partial merchant is the one that completes a package.
+Merchants reported per transport are `ceil(total / capacity)`, never more than the
+model counted; the merchants that saves are credited back for more packages. The reserve
 limits what leaves a village; an academy's own stock counts toward its own packages, and
 it exports only what its packages don't need. The warehouse rule first uses the longest
 *candidate* trip into the academy, then the plan's own longest arrival (see Model).
@@ -219,6 +220,20 @@ closed). Details that were measured:
   holding nearly one package) got 58 packages with K = 20 and 72 with every pair (whole-load
   bound 73), in ~90 ms. Fixture: `test/package-planner/fixtures/academy-heavy.js`. Large
   academy-heavy accounts still prune at K = 20; that gap is unmeasured.
+- **Combined loads** (#15). The flow counts a merchant per 1000 of *one* resource; a
+  merchant really carries 1000 of any mix. Each academy's overshoot is trimmed off one
+  transport when one carries enough of every resource (so its partial loads share
+  merchants), else off the farthest deliveries. Then each source is credited the merchants
+  that saves, the greedy goes on, and the result is kept only if it adds packages and every
+  source still fits its real merchants (`ceil(total / 1000)` per transport); repeated until
+  nothing changes. The saving is at most 2 merchants per academy (the sub-1000 rest of 3
+  resources), so it only matters when a package is just short. Measured: +6 packages over
+  660 merchant-scarce worlds of 10–100 villages (never fewer), tiny worlds still equal the
+  brute force; on 500/120 and 800/200 it gained nothing in 24 cases and cost up to +1.1 s
+  on scarce ones, so the refill runs only when sources × academies ≤ 10,000 (as pruning).
+  Bench before → after: 500/120 scarce 0.95–1.72 s → 0.94–1.68 s, typical 14–656 ms →
+  13–635 ms (noise), 0.1–0.3% fewer merchants. Real account: 71 packages either way, 1025 →
+  1022 merchants, ~90 → ~110 ms. Finer units (100s) were not tried: ~10× the flow.
 - Travel time: `round(distance × 360 / speed)` s, `speed` from the world config, no
   `unit_speed` (matches all 64 rows of the real Request-resources page, enc1 speed 3.6).
 
