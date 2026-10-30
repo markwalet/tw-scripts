@@ -5,6 +5,7 @@ import { buildDebugInfo } from '../../src/package-planner/core/debug-info.js';
 import { loadOverview } from '../../src/package-planner/core/load-overview.js';
 import { prodEntries } from '../../src/package-planner/core/parse-prod.js';
 import { buildingsEntries } from '../../src/package-planner/core/parse-buildings.js';
+import { loadIncoming } from '../../src/package-planner/core/parse-incoming.js';
 
 const read = (f) => readFileSync(new URL(`../fixtures/package-planner/${f}`, import.meta.url), 'utf8');
 
@@ -16,6 +17,7 @@ async function report() {
     config: { gold: false, packageCost: { wood: 28000, stone: 30000, iron: 25000 }, speed: 3.6, unitSpeed: 0.278, warnings: [] },
     prod,
     buildings,
+    incoming: await loadIncoming({ fetchPage: async () => read('trader-inc.html') }),
     result: { packages: 2, academies: 4, villages: 5, notInBuildings: 0 },
     plan: { packages: 7, cards: 3, transports: 9, merchants: 412, longestSeconds: 1393, ms: 41 },
     error: 'GET /game.php?village=101&screen=overview_villages&t=1000001 failed: 503',
@@ -34,11 +36,12 @@ test('buildDebugInfo: includes what the parsers saw, counts and the result', asy
   assert.match(out, /storable now: 2 packages in 4 academies/);
   assert.match(out, /cost 28000\/30000\/25000/);
   assert.match(out, /plan: 7 packages, 3 targets, 9 transports, 412 merchants, longest 1393 s, solved in 41 ms/);
+  assert.match(out, /trader incoming: rows 3, pages linked 0, 3 transports to 2 villages/);
 });
 
 test('buildDebugInfo: leaks no player name, player/village ids, coordinates or tokens', async () => {
   const out = buildDebugInfo(await report());
-  for (const secret of ['Test Player', '1000001', 'deadbeef', 'village=101', '101', '500|500', 'Village 1']) {
+  for (const secret of ['Test Player', '1000001', 'deadbeef', 'village=101', '101', '500|500', 'Village 1', '2005', '639|220']) {
     assert.equal(out.includes(secret), false, `leaked ${secret}`);
   }
   assert.match(out, /error: .*failed: 503/);

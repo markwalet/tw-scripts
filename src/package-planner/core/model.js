@@ -21,10 +21,11 @@ const perHour = (level, base, speed) => base * 1.163118 ** (Math.max(1, level) -
  *   villages: ProdVillage[],
  *   academyLevels: Map<number, number>,   village id -> academy level (Buildings overview)
  *   mineLevels?: Map<number, Res>,        village id -> timber camp, clay pit, iron mine level
+ *   incoming?: Map<number, Res>,          village id -> resources on the way (Trader overview)
  *   config: { packageCost: { wood: number, stone: number, iron: number }, speed: number | null, baseProduction?: number | null },
  * }} input
  */
-export function solverInput({ villages, academyLevels, mineLevels = new Map(), config }) {
+export function solverInput({ villages, academyLevels, mineLevels = new Map(), incoming, config }) {
   /** @type {string[]} */
   const warnings = [];
   const speed = config.speed && config.speed > 0 ? config.speed : null;
@@ -45,6 +46,8 @@ export function solverInput({ villages, academyLevels, mineLevels = new Map(), c
       merchants: v.merchantsAvailable,
       academy: (academyLevels.get(v.id) ?? 0) >= 1,
     };
+    // On the way = already there (the solver caps it by the warehouse), spec §4.
+    if (incoming?.has(v.id)) sv.inflight = incoming.get(v.id);
     // Production only matters where resources arrive: the warehouse margin (§5).
     if (sv.academy) {
       const mines = mineLevels.get(v.id);

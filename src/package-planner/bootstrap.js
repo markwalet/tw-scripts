@@ -1,6 +1,7 @@
 // package-planner/bootstrap.js — entry point of the Noble Package Planner
 // (DESIGN-package-planner.md). Registers with TW, opens the popup and checks the
-// preconditions. Each Calculate reads the Production + Buildings overviews, runs the
+// preconditions. Each Calculate reads the Production, Buildings and Trader (incoming)
+// overviews (what is on the way counts as arrived), runs the
 // solver once (the plan is a snapshot) and shows it as cards.
 
 import * as tw from './adapter/tw.js';
@@ -10,12 +11,15 @@ import { checkPreconditions } from './core/preconditions.js';
 import { loadOverview } from './core/load-overview.js';
 import { prodEntries } from './core/parse-prod.js';
 import { buildingsEntries } from './core/parse-buildings.js';
+import { loadIncoming } from './core/parse-incoming.js';
 import { storableNow } from './core/storable.js';
 import { solverInput } from './core/model.js';
 import { solve } from './core/solver.js';
 import { planView } from './core/plan-view.js';
 import { buildDebugInfo } from './core/debug-info.js';
+import { settingsStore, solverOptions } from './core/settings.js';
 import { createPopup } from './ui/popup.js';
+import { createSettingsPanel } from './ui/settings-panel.js';
 
 const t = makeTranslator(resolveLang('auto', tw.market()));
 
@@ -28,6 +32,8 @@ const report = { env: tw.env() };
 /** @type {ReturnType<typeof parseWorldConfig> | null} */
 let config = null;
 let busy = false;
+/** Saved per world (localStorage); edited in the popup, used by the next Calculate. */
+let settings = settingsStore.load(report.env?.world ?? '');
 
 const popup = createPopup({
   t,
@@ -37,6 +43,12 @@ const popup = createPopup({
   debugText: () => buildDebugInfo(report),
   toast: tw.toast,
   onCalculate: () => { calculate(); },
+  post: tw.postMarket,
+  settingsPanel: createSettingsPanel({
+    t,
+    get: () => settings,
+    save: (next) => { settings = next; settingsStore.save(report.env?.world ?? '', next); },
+  }),
 });
 
 /** @param {unknown} err */
@@ -89,12 +101,14 @@ async function calculate() {
   const env = report.env || tw.env();
   try {
     popup.render({ status: 'loading' });
-    const [prod, buildings] = await Promise.all([
+    const [prod, buildings, incoming] = await Promise.all([
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('prod', p)), parse: prodEntries, expected: env.villages, label: 'prod' }),
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('buildings', p)), parse: buildingsEntries, expected: env.villages, label: 'buildings' }),
+      loadIncoming({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('trader', p)) }),
     ]);
     report.prod = prod;
     report.buildings = buildings;
+    report.incoming = incoming;
     const villages = [...prod.byId.values()];
     const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
     const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
@@ -103,17 +117,17 @@ async function calculate() {
 
     popup.render({ status: 'calculating' });
     await afterPaint();
-    const input = solverInput({ villages, academyLevels, mineLevels, config });
+    const input = solverInput({ villages, academyLevels, mineLevels, incoming: incoming.byId, config });
     const t0 = performance.now();
-    const plan = solve(input.world, input.options);
+    const plan = solve(input.world, { ...input.options, ...solverOptions(settings) });
     const ms = Math.round(performance.now() - t0);
-    const view = planView(plan, prod.byId);
+    const view = planView(plan, prod.byId, storable.packages);
     report.plan = {
       packages: plan.packages, cards: view.cards.length, transports: plan.transports.length,
       merchants: plan.merchants, longestSeconds: plan.longestSeconds, ms,
     };
 
-    const warnings = [...config.warnings, ...input.warnings, ...prod.warnings, ...buildings.warnings];
+    const warnings = [...config.warnings, ...input.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
     if (storable.notInBuildings) warnings.push(`${storable.notInBuildings} villages are missing from the Buildings overview`);
     popup.render({
       status: 'done',
@@ -121,6 +135,8 @@ async function calculate() {
       detail: { merchants: plan.merchants, academies: storable.academies, villages: villages.length },
       stored: null, // packages already stored: read from the academy page with the noble target (#10)
       warnings,
+      transports: plan.transports,
+      places: prod.byId,
     });
   } catch (err) {
     fail(err);
