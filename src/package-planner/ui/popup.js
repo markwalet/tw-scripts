@@ -7,7 +7,7 @@
 
 import { h, injectStyle } from '../../shared/dom.js';
 import { fill } from '../core/i18n.js';
-import { hm, hms } from '../core/plan-view.js';
+import { fmt, hm, hms } from '../core/plan-view.js';
 import { requestPayload, transportPayload, fallbackRows } from '../core/send.js';
 
 /** Click lock after each send (approved-scripts pattern): holding Enter = one send per lock. */
@@ -42,9 +42,6 @@ const CSS = `
 .pp-mobile .btn,.mobile .pp-root .btn{min-height:40px}
 `;
 
-/** "33140" -> "33.140", the way TW prints numbers. @param {number} n */
-const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
 /** @typedef {import('../core/plan-view.js').Card} Card */
 /** @typedef {ReturnType<typeof import('../core/plan-view.js').planView>} PlanView */
 
@@ -72,9 +69,10 @@ const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
  *   toast: (msg: string) => void,
  *   onCalculate: () => void,
  *   post: (action: 'call' | 'map_send', village: number, data: Record<string, number>) => Promise<Outcome>,
+ *   settingsPanel: { element: () => HTMLElement, close: () => void },
  * }} deps
  */
-export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate, post }) {
+export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate, post, settingsPanel }) {
   injectStyle('pp-style', CSS);
   const host = h('div');
   let shown = false;
@@ -209,8 +207,8 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     const { summary, cards } = v.plan;
     const sentCount = [...send.status.values()].filter((s) => s === 'sent').length;
     const headline = [
-      h('b', { text: count('newPackages', summary.packages) }),
-      t('afterArrival'),
+      h('b', { text: count('storableAfter', summary.packages) }),
+      summary.storableNow ? fill(t('storableSplit'), { now: fmt(summary.storableNow), added: fmt(summary.fromTransports) }) : '',
       v.stored == null ? '' : fill(t('storedTotal'), { n: fmt(v.stored + summary.packages) }),
       ' → ',
       storeLink(),
@@ -251,8 +249,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     }
   }
 
+  const configurable = () => view.status !== 'refused' && view.status !== 'starting';
+
   function calculateButton() {
-    if (view.status === 'refused' || view.status === 'starting') return null;
+    if (!configurable()) return null;
     const busy = view.status === 'loading' || view.status === 'calculating';
     return h('div', { className: 'pp-calc' }, [
       h('button', {
@@ -260,7 +260,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
         type: 'button',
         disabled: busy ? 'disabled' : null,
         text: t(calculated ? 'recalculate' : 'calculate'),
-        on: { click: () => { calculated = true; onCalculate(); } },
+        on: { click: () => { calculated = true; settingsPanel.close(); onCalculate(); } },
       }),
     ]);
   }
@@ -275,6 +275,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     firstSend = null;
     const root = h('div', { className: mobile ? 'pp-root pp-mobile' : 'pp-root' }, [
       h('h3', { text: t('scriptName') }),
+      configurable() ? settingsPanel.element() : null,
       calculateButton(),
       ...body().filter(Boolean),
       h('div', { className: 'pp-actions' }, [
