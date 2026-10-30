@@ -85,7 +85,8 @@ async function driver(scenario) {
       check('a tap sends one request', window.__posts.length === 1, window.__posts.length);
       await sleep(250);
       check('&t=<player id> on every own GET while sitting', window.__gets.length >= 3 && window.__gets.every((u) => /[?&]t=1(&|$)/.test(u)), window.__gets);
-      check('Academy › Store link carries &t=', $$('a.pp-link').every((a) => /[?&]t=1(&|$)/.test(a.getAttribute('href'))), $$('a.pp-link').map((a) => a.getAttribute('href')));
+      const links = $$('a[href*="game.php"]').map((a) => a.getAttribute('href'));
+      check('game links (Academy › Store) carry &t=', links.length >= 1 && links.every((u) => /[?&]t=1(&|$)/.test(u)), links);
       throw 'done';
     }
     const before = ids();
