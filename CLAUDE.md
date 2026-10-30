@@ -22,11 +22,17 @@ out of scope, permanently.
 
 ```bash
 npm install                       # once
-npm run build                     # bundle src/ -> dist/timetool2.js (renderer: modern)
-npm run build -- --renderer=native   # or minimal — swap the look (DESIGN.md §7)
-npm run watch                     # rebuild on change
-npm test                          # unit tests for core/ (node --test)
+npm run build                     # bundle both scripts: dist/timetool2.js (renderer: modern)
+                                  #   + dist/package-planner.js
+npm run build -- --renderer=native   # or minimal — swap timetool2's look (DESIGN.md §7);
+                                     # the planner has no renderer (native look only)
+npm run watch                     # rebuild both on change
+npm test                          # unit tests for core/ + shared/ (node --test)
 ```
+
+- Both outputs are readable, non-minified IIFEs with their own reviewer banner in
+  `build.mjs`. To try the planner: paste `dist/package-planner.js` into the console on any
+  TW page.
 
 - Node 24, ESM (`"type": "module"`). esbuild is the only dependency.
 - Gotcha: the test script uses a glob (`"test/**/*.test.js"`); `node --test test/` alone
@@ -36,17 +42,26 @@ npm test                          # unit tests for core/ (node --test)
 
 ```
 src/
-  bootstrap.js     entry: register, detect page, wire modules, start
+  shared/          generic modules used by BOTH scripts — never script-specific
+    dom.js         h() element builder (no innerHTML soup) + injectStyle()
+    queue.js       retry queue, throttled: request starts >= 200 ms apart (<= 5/s, the
+                   approval limit); injectable now/setTimer for tests
+    settings-store.js  createSettingsStore({name, version, defaults, migrate}) ->
+                   per-world load/save/migrate/export/import (key `${world}${name}`)
+    i18n.js        createI18n({tables, marketToLang}) -> translator + market->lang
+  package-planner/ the Noble Package Planner (entry -> dist/package-planner.js)
+    bootstrap.js   entry: register (more per DESIGN-package-planner.md §3)
+    adapter/tw.js  the planner's ONLY TW-globals/DOM/endpoint module (own `w` cast)
+    core/          PURE: the planner's i18n table (+ solver/parsers to come)
+  bootstrap.js     timetool2 entry: register, detect page, wire modules, start
   adapter/         the ONLY place that touches TW globals + TW-owned DOM
     tw.js          globals (Timing, game_data, TribalWars, $, ScriptAPI, Dialog), TW DOM, fetch
     clock.js       now() + refocus-resync (the Chrome tab-switch fix)
   core/            PURE JS — no DOM, no globals — unit-tested in test/
     time-math.js   send-time, bar math, snipe-time parser  (the correctness-critical part)
-    settings.js    per-world schema/defaults/load/save/migrate
-    i18n.js        UI-label tables + market->lang; DATA reads are language-agnostic
-    queue.js       throttled retry queue (generic, testable)
+    settings.js    timetool2's settings schema on shared/settings-store.js
+    i18n.js        timetool2's UI-label tables on shared/i18n.js; DATA reads are language-agnostic
   ui/
-    dom.js         h() element builder (no innerHTML soup)
     renderer.js    re-exports the active renderer from `@renderer` (build-time alias)
     renderers/     modern.js (default) | native.js | minimal.js  + _base.js (shared impl)
     snipe-bar.js   the bar CONTROLLER: state + rAF loop + resync + passive submit listener
@@ -63,6 +78,8 @@ src/
   changes something, and where defensive null-checks live.
 - Elements *we* created (`#tt2-*`, our panel) → touch directly.
 - `core/` must stay pure (no DOM, no globals) so it keeps unit-testing without a TW page.
+  `shared/` follows the same rule except `dom.js` (touches only `document`, never TW).
+  Anything generic both scripts need goes in `shared/` — don't copy it between scripts.
   All untyped global access is funneled through the single `const w = (window)` cast in
   `adapter/tw.js` — keep it that way so `checkJs` covers the rest.
 
@@ -104,7 +121,7 @@ summary is the `banner` in `build.mjs` — the one block guaranteed to ship. Upd
 Engine + core + all feature modules are implemented and wired: snipe bar, cues (Web Audio,
 background-reliable, unlocked on first user gesture), settings popup (colors, cue toggles +
 volume, tab-title, language, export/import), incomings (fetch + append "Send in" +
-click-to-fill), planner/off-pack `arrivalTimestamp` handoff. 37 unit tests green; all three
+click-to-fill), planner/off-pack `arrivalTimestamp` handoff. Unit tests green; all three
 renderers build.
 
 What still needs a **live TW page** or is a known v1 gap — search `TODO(live)` and see the
