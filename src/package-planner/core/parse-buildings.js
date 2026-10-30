@@ -5,6 +5,7 @@
 // (also span.quickedit-vn[data-id]); the academy is td.upgrade_building.b_snob. Level 0
 // renders as <span class="hidden">0</span>, so read the text, not visibility. The column
 // set differs per world, so we use the b_<building> class, never a column index.
+// Mines (b_wood/b_stone/b_iron) give the production rate for the warehouse margin (§5).
 
 import { parseHtml, find, findAll, textOf, hasClass, intOf, is } from '../../shared/html.js';
 import { headerVillageCount, pageNumbers, rowShape } from './overview.js';
@@ -18,6 +19,12 @@ function villageId(tr) {
   return intOf(find(tr, (e) => hasClass(e, 'quickedit-vn'))?.attrs['data-id'] || '');
 }
 
+/** Level in the row's td.<building> cell; NaN when the cell is missing. @param {El} tr @param {string} building */
+function cellLevel(tr, building) {
+  const cell = find(tr, (e) => e.tag === 'td' && hasClass(e, building));
+  return cell ? intOf(textOf(cell)) : NaN;
+}
+
 /**
  * @param {string} html
  */
@@ -27,16 +34,20 @@ export function parseBuildings(html) {
   const warnings = [];
   /** @type {Map<number, number>} village id -> academy level */
   const levels = new Map();
+  /** @type {Map<number, [number, number, number]>} village id -> timber camp, clay pit, iron mine level */
+  const mines = new Map();
   const pages = pageNumbers(root);
   const table = find(root, is({ tag: 'table', id: 'buildings_table' }));
   if (!table) {
     warnings.push('buildings: buildings table not found');
-    return { levels, expectedCount: null, pages, warnings, structure: { tableFound: false } };
+    return { levels, mines, expectedCount: null, pages, warnings, structure: { tableFound: false } };
   }
 
   const rows = findAll(table, (el) => el.tag === 'tr' && Number.isFinite(villageId(el)));
   let noAcademyCell = 0;
   for (const tr of rows) {
+    const mine = ['b_wood', 'b_stone', 'b_iron'].map((b) => cellLevel(tr, b));
+    if (mine.every(Number.isFinite)) mines.set(villageId(tr), /** @type {[number, number, number]} */ (mine));
     const cell = find(tr, (e) => e.tag === 'td' && hasClass(e, 'b_snob'));
     if (!cell) {
       noAcademyCell += 1;
@@ -49,6 +60,7 @@ export function parseBuildings(html) {
 
   return {
     levels,
+    mines,
     expectedCount: headerVillageCount(table),
     pages,
     warnings,
@@ -60,8 +72,8 @@ export function parseBuildings(html) {
   };
 }
 
-/** parseBuildings in the shape loadOverview() takes (academy level keyed by village id). @param {string} html */
+/** parseBuildings in the shape loadOverview() takes: academy + mine levels keyed by village id. @param {string} html */
 export function buildingsEntries(html) {
-  const { levels, ...rest } = parseBuildings(html);
-  return { ...rest, entries: [...levels.entries()] };
+  const { levels, mines, ...rest } = parseBuildings(html);
+  return { ...rest, entries: [...levels.entries()].map(([id, academy]) => /** @type {[number, { academy: number, mines: [number, number, number] | null }]} */ ([id, { academy, mines: mines.get(id) || null }])) };
 }

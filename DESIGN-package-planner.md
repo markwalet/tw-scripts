@@ -108,9 +108,9 @@ src/
 | What | Source |
 |---|---|
 | Resources, warehouse capacity, merchants available/total, coords | `overview_villages&mode=prod&page=-1` (+ `group=`) |
-| Academy present (snob level ≥ 1) | `overview_villages&mode=buildings&page=-1` |
+| Academy present (snob level ≥ 1), mine levels (production) | `overview_villages&mode=buildings&page=-1` |
 | Transports already on the way | `overview_villages&mode=trader&type=inc&page=-1` |
-| Package cost, `gold` flag, world/unit speed | `/interface.php?func=get_config` (`snob.coin_wood/coin_stone/coin_iron`, `snob.gold`, `speed`, `unit_speed`) — public, cached per world |
+| Package cost, `gold` flag, world/unit speed, base production | `/interface.php?func=get_config` (`snob.coin_wood/coin_stone/coin_iron`, `snob.gold`, `speed`, `unit_speed`, `game.base_production`) — public, cached per world |
 | Packages stored, price of next noble | one academy page (`screen=snob`) — only needed for the noble target |
 | Merchant capacity | 1000 default; read live if a page exposes it, warn when falling back |
 
@@ -146,6 +146,29 @@ fix for what existing balancers get wrong (see §9).
   `W[a] = storage_max − production[a][k] × (longest arrival into a) − buffer%`.
   Production at **sources** during the run is ignored (safe side). Storing a package and
   then refilling within one run is **not** modelled (time-dependent; v2 at most).
+  `buffer%` is the setting (§6); the solver option `bufferPct` defaults to 2.
+- **Production rate** (#8), per academy and resource, per hour:
+  `game.base_production × 1.163118^(level − 1) × speed`, with the timber camp / clay pit /
+  iron mine level from the Buildings overview (`td.b_wood/b_stone/b_iron`). **Zero extra
+  requests**: that overview and the world config are read anyway. Checked on a real enc1
+  village: mines 30, `base_production` 33 (not the classic 30, so it's read, falling back
+  to 30 with a warning), speed 3.6 → 9504/h, the game's `wood_prod` (2.64/s). Level 0
+  counts as level 1 (safe side). An academy without mine levels gets no margin, with a
+  warning. Not modelled: bonus villages, the premium production bonus, items and events
+  (all off on enc1); the buffer % covers small gaps. The exact per-village rate exists
+  (`api&ajax=resources_schedule&id=<village>`, as `ResourcesForecaster` uses), but costs a
+  request per academy (~120 → 24 s at 5/s), so it isn't used.
+- **The margin is circular**: it limits the plan, and the plan sets the longest arrival.
+  Handled in two steps, inside one solve: (1) the greedy and local search plan with the
+  margin of the longest *candidate* trip into each academy (safe: no planned trip is
+  longer); (2) every academy then held at that cap gets the margin of its *own* longest
+  planned arrival, its longer arcs close (so no later delivery arrives after that), and
+  the greedy continues in the same network. Valid by construction, no second solve. On
+  synthetic 500/120 worlds with production this adds 7–15 packages, of the 9–24 between the
+  candidate-margin plan and the upper bound (re-solving with the actual arrivals got 2–3
+  more, but always needed 2 extra solves: up to 3× the time on scarce worlds), at no
+  measurable time cost. On the user's real account (63 academies, ≤ 9504/h, longest
+  trip ~32 min, warehouses far from full) the plan is unchanged: 71 packages either way.
 - Source merchant limit: Σ shipped out of *s* ≤ `capacity × m[s]`.
 - Optional cap from the noble target: Σ n[a] ≤ packages still missing.
 
@@ -167,8 +190,8 @@ units, and the overshoot (< 1 unit per resource) is trimmed off its farthest del
 the only partial merchant is the one that completes a package. Merchants reported per
 transport are `ceil(total / capacity)`, never more than the model counted. The reserve
 limits what leaves a village; an academy's own stock counts toward its own packages, and
-it exports only what its packages don't need. The warehouse rule uses the longest
-*candidate* trip into the academy (safe side; the actual longest arrival is shorter).
+it exports only what its packages don't need. The warehouse rule first uses the longest
+*candidate* trip into the academy, then the plan's own longest arrival (see Model).
 
 **Algorithm** (`src/package-planner/core/solver.js`, `solve(world, options) → plan`).
 For a fixed package count per academy, routing is a min-cost flow
