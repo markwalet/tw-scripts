@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseBuildings } from '../../src/package-planner/core/parse-buildings.js';
+import { parseBuildings, buildingsEntries } from '../../src/package-planner/core/parse-buildings.js';
 
 // Trimmed from the user's real enc1 Buildings overview: same 5 villages as prod.html.
 // Academy level 0 renders as <span class="hidden">0</span>.
@@ -16,6 +16,29 @@ test('parseBuildings: academy level per village id, including level 0', () => {
     [104, 0],
     [105, 3],
   ]);
+});
+
+test('parseBuildings: timber camp, clay pit and iron mine level per village id', () => {
+  const { mines } = parseBuildings(fixture);
+  assert.deepEqual([...mines.entries()], [
+    [101, [30, 30, 30]],
+    [102, [30, 30, 30]],
+    [103, [28, 29, 26]],
+    [104, [25, 25, 25]],
+    [105, [30, 30, 30]],
+  ]);
+});
+
+test('parseBuildings: a row without mine cells has no mine levels (no guess)', () => {
+  const html = fixture.replace('<td class="upgrade_building b_iron">26</td>', '');
+  const { mines } = parseBuildings(html);
+  assert.equal(mines.has(103), false);
+  assert.equal(mines.has(102), true);
+});
+
+test('buildingsEntries: academy level and mine levels per village, in loadOverview shape', () => {
+  const { entries } = buildingsEntries(fixture);
+  assert.deepEqual(entries[2], [103, { academy: 2, mines: [28, 29, 26] }]);
 });
 
 test('parseBuildings: header village count, no warnings on the real layout', () => {
