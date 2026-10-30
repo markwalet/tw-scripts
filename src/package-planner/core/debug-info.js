@@ -1,7 +1,8 @@
 // package-planner/core/debug-info.js — the "Copy debug info" text: what the parsers saw
 // (page structure, mapped columns, counts, warnings) so the user can paste it back when
 // something is off on their real page. Pure. Built from a WHITELIST of fields: no player
-// name/id, village ids/names/coords or tokens; free-text errors are scrubbed.
+// name/id, village names/coords or tokens; village ids only in failed-send records (the
+// user's own villages, needed to match the evidence); free-text errors are scrubbed.
 
 /**
  * Remove identifiers from free text (URLs in error messages etc.).
@@ -33,6 +34,7 @@ function overviewLine(label, s) {
  *   plan?: { packages: number, cards: number, transports: number, merchants: number, longestSeconds: number, ms: number } | null,
  *   refused?: string | null,
  *   error?: string | null,
+ *   failures?: import('./send.js').Failure[],
  * }} r
  */
 export function buildDebugInfo(r) {
@@ -69,5 +71,21 @@ export function buildDebugInfo(r) {
   const warnings = [...(r.config?.warnings || []), ...(r.prod?.warnings || []), ...(r.buildings?.warnings || []), ...(r.incoming?.warnings || [])];
   lines.push(warnings.length ? `warnings:\n- ${warnings.map(scrub).join('\n- ')}` : 'warnings: none');
   if (r.error) lines.push(`error: ${scrub(r.error)}`);
+  for (const f of r.failures || []) lines.push(...failureLines(f));
   return lines.join('\n');
+}
+
+/** @param {import('./send.js').Load | null} l */
+const load = (l) => (l ? `${l.res.join('/')} (${l.merchants} merchants)` : 'none');
+
+/**
+ * A failed send: ids and amounts as recorded (village ids are fine), the game's text scrubbed.
+ * @param {import('./send.js').Failure} f
+ */
+function failureLines(f) {
+  return [
+    `failed send: ${f.action} to village ${f.target} (${f.reason}): ${scrub(f.message)}`,
+    `  raw: ${scrub(JSON.stringify(f.raw) ?? 'none').slice(0, 500)}`,
+    ...f.sources.map((s) => `  source ${s.id}: sent ${load(s.sent)}${s.planned ? `, planned ${load(s.planned)}` : ''}; overview ${load(s.overview)}; game reported ${load(s.reported)}`),
+  ];
 }

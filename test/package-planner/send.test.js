@@ -30,17 +30,20 @@ test('fallbackRows: one row per transport of the targets not yet sent, in card o
   assert.deepEqual(rows[0].from, { id: 10, name: 'Farm A', x: 501, y: 500 });
 });
 
+/** Outcome without the raw answer / reported sources (send-outcome.test.js checks those). */
+const brief = ({ left, raw, ...o }) => o;
+
 test('outcome: success reads the message the game returns (response.success, else .message)', () => {
-  assert.deepEqual(outcome('success', { success: 'Resources requested' }), { ok: true, message: 'Resources requested' });
-  assert.deepEqual(outcome('success', { message: 'Sent' }), { ok: true, message: 'Sent' });
-  assert.deepEqual(outcome('success', undefined), { ok: true, message: '' });
+  assert.deepEqual(brief(outcome('success', { success: 'Resources requested' })), { ok: true, message: 'Resources requested' });
+  assert.deepEqual(brief(outcome('success', { message: 'Sent' })), { ok: true, message: 'Sent' });
+  assert.deepEqual(brief(outcome('success', undefined)), { ok: true, message: '' });
 });
 
 test('outcome: failures keep the game\'s message; no argument = bot protection; no answer = timeout', () => {
-  assert.deepEqual(outcome('error', 'Not enough merchants'), { ok: false, reason: 'game', message: 'Not enough merchants' });
-  assert.deepEqual(outcome('error', ['A', 'B']), { ok: false, reason: 'game', message: 'A B' });
-  assert.deepEqual(outcome('error', undefined), { ok: false, reason: 'botProtect', message: '' });
-  assert.deepEqual(outcome('error', { status: 500 }), { ok: false, reason: 'game', message: 'HTTP 500' });
-  assert.deepEqual(outcome('timeout'), { ok: false, reason: 'timeout', message: '' });
-  assert.deepEqual(outcome('unavailable'), { ok: false, reason: 'unavailable', message: '' });
+  assert.deepEqual(brief(outcome('error', 'Not enough merchants')), { ok: false, reason: 'game', message: 'Not enough merchants' });
+  assert.deepEqual(brief(outcome('error', ['A', 'B'])), { ok: false, reason: 'game', message: 'A B' });
+  assert.deepEqual(brief(outcome('error', undefined)), { ok: false, reason: 'botProtect', message: '' });
+  assert.deepEqual(brief(outcome('error', { status: 500 })), { ok: false, reason: 'game', message: 'HTTP 500' });
+  assert.deepEqual(brief(outcome('timeout')), { ok: false, reason: 'timeout', message: '' });
+  assert.deepEqual(brief(outcome('unavailable')), { ok: false, reason: 'unavailable', message: '' });
 });
