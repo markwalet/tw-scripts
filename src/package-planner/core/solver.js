@@ -261,7 +261,7 @@ function optimise(model, penalty) {
 
   // Local search: take one package away from an academy and refill greedily. Keep the
   // result if it has more packages, or as many for fewer resource-hours. Bounded by a
-  // budget of tentative packages. It pays off on small and mid-size worlds (up to +10% on
+  // budget of tentative packages. It pays off on small and mid-size worlds (up to +9% on
   // merchant-scarce ones); on big worlds each refill is slow and the spike measured no gain.
   budget = academies.length <= o.improveMaxAcademies ? attempts + o.improveBudget : 0;
   for (let round = 0, improved = true; improved && round < o.improveRounds && attempts < budget; round++) {
