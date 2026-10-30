@@ -50,6 +50,52 @@ test('resources already on the way count as present', () => {
   assert.deepEqual(plan.transports, []);
 });
 
+/** The world after `sent` left: sources lose resources + merchants, targets get them in flight. */
+function afterSending(world, sent) {
+  const villages = world.villages.map((v) => ({ ...v, res: [...v.res], inflight: [...(v.inflight || [0, 0, 0])] }));
+  const byId = new Map(villages.map((v) => [v.id, v]));
+  for (const t of sent) {
+    const from = byId.get(t.from);
+    const to = byId.get(t.to);
+    from.merchants -= t.merchants;
+    for (let k = 0; k < 3; k++) {
+      from.res[k] -= t.res[k];
+      to.inflight[k] += t.res[k];
+    }
+  }
+  return { villages };
+}
+
+test('a rerun with the whole previous plan in flight plans no transports, same packages', () => {
+  const world = {
+    villages: [
+      academy(1, 500, 500, [0, 0, 0]), academy(2, 510, 500, [10000, 0, 0]),
+      village(3, 503, 504, [40000, 40000, 40000]), village(4, 507, 501, [50000, 20000, 30000]), village(5, 505, 497, [30000, 60000, 40000]),
+    ],
+  };
+  const first = solveValid(world);
+  assert.ok(first.packages >= 3 && first.transports.length >= 3);
+  const rerun = solveValid(afterSending(world, first.transports));
+  assert.equal(rerun.packages, first.packages);
+  assert.deepEqual(rerun.transports, []);
+});
+
+test('a rerun after a partial send plans only the rest: the same packages, nothing sent twice', () => {
+  const world = {
+    villages: [
+      academy(1, 500, 500, [0, 0, 0]), academy(2, 510, 500, [10000, 0, 0]),
+      village(3, 503, 504, [40000, 40000, 40000]), village(4, 507, 501, [50000, 20000, 30000]), village(5, 505, 497, [30000, 60000, 40000]),
+    ],
+  };
+  const first = solveValid(world);
+  const sent = first.transports.slice(0, 2);
+  const rerun = solveValid(afterSending(world, sent));
+  assert.equal(rerun.packages, first.packages);
+  assert.ok(rerun.transports.length > 0);
+  const shipped = (ts) => ts.reduce((s, t) => s + t.res[0] + t.res[1] + t.res[2], 0);
+  assert.ok(shipped(rerun.transports) <= shipped(first.transports) - shipped(sent));
+});
+
 test('the noble target caps the packages', () => {
   const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000], 300)] };
   assert.equal(solveValid(world).packages, 3);

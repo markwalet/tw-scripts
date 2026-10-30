@@ -17,6 +17,16 @@ test('solverInput: prod villages become solver villages; academy = academy level
   ]);
 });
 
+test('solverInput: resources on the way (Trader overview) become the target village\'s inflight', () => {
+  const { world } = solverInput({
+    villages: [prodVillage(1), prodVillage(2)],
+    academyLevels: new Map([[1, 1]]),
+    incoming: new Map([[1, [28000, 30000, 1000]], [99, [5000, 0, 0]]]),
+    config,
+  });
+  assert.deepEqual(world.villages.map((v) => v.inflight), [[28000, 30000, 1000], undefined]);
+});
+
 test('solverInput: package cost and world speed come from the world config', () => {
   const { options, warnings } = solverInput({ villages: [], academyLevels: new Map(), config });
   assert.deepEqual(options, { cost: [28000, 30000, 25000], worldSpeed: 3.6 });

@@ -7,6 +7,7 @@
 const w = /** @type {any} */ (window);
 
 import { createQueue } from '../../shared/queue.js';
+import { outcome } from '../core/send.js';
 
 /** Register with TW's ScriptAPI (guarded no-op if unavailable). */
 export function register(name, version, author, email) {
@@ -50,20 +51,41 @@ export function fetchText(url) {
 }
 
 /**
+ * POST one market action through TW's own request helper (adds the csrf token, `&t=` when
+ * sitting, and shows the game's error/captcha). Resolves once with how it ended; never
+ * rejects, so the queue never retries. TW calls no callback on HTTP 429/503: a watchdog
+ * turns "no answer" into a failure.
+ * @param {'call' | 'map_send'} action
+ * @param {number} village  target for 'call', source for 'map_send'
+ * @param {Record<string, number>} data
+ * @returns {Promise<import('../core/send.js').Outcome>}
+ */
+export function postMarket(action, village, data, timeoutMs = 10000) {
+  return queue.add(() => new Promise((resolve) => {
+    let timer = 0;
+    const end = (/** @type {Parameters<typeof outcome>} */ ...r) => { clearTimeout(timer); resolve(outcome(...r)); };
+    if (!w.TribalWars || typeof w.TribalWars.post !== 'function') return end('unavailable');
+    timer = setTimeout(() => end('timeout'), timeoutMs);
+    w.TribalWars.post('market', { ajaxaction: action, village }, data,
+      (/** @type {unknown} */ r) => end('success', r), (/** @type {unknown} */ e) => end('error', e));
+  }));
+}
+
+/**
  * URL of a premium village overview, group "all". TW's own buildURL adds `&t=<id>` when
  * sitting; the fallback does the same.
- * @param {'prod' | 'buildings'} mode
+ * @param {'prod' | 'buildings' | 'trader'} mode  trader = incoming transports (type=inc)
  * @param {number} page  -1 = all on one page
  */
 export function overviewUrl(mode, page) {
-  const params = { mode, group: 0, page };
+  const params = { mode, ...(mode === 'trader' ? { type: 'inc' } : {}), group: 0, page };
   if (w.TribalWars && typeof w.TribalWars.buildURL === 'function') {
     return String(w.TribalWars.buildURL('GET', 'overview_villages', params));
   }
   const g = gd();
   const base = String(g.link_base_pure ?? '/game.php?screen=');
   const t = parseInt(g.player?.sitter, 10) > 0 ? `&t=${g.player.id}` : '';
-  return `${base}overview_villages&mode=${mode}&group=0&page=${page}${t}`;
+  return `${base}overview_villages&${Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&')}${t}`;
 }
 
 /** Link to Academy › Store (the mass-store sub-tab). */
