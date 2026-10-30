@@ -1,4 +1,4 @@
-// ui/dom.js — tiny element builder. Replaces the original's .innerHTML string soup with
+// shared/dom.js — tiny element builder. Replaces the original's .innerHTML string soup with
 // structured DOM creation (safer, no parsing-order bugs; DESIGN.md §2).
 
 /**
