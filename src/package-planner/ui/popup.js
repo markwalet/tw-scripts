@@ -6,7 +6,7 @@
 // one-column cards with a full-width tap-sized send button, no auto-focus.
 
 import { h, injectStyle } from '../../shared/dom.js';
-import { fill } from '../core/i18n.js';
+import { fill, plural } from '../core/i18n.js';
 import { fmt, hm, hms } from '../core/plan-view.js';
 import { requestPayload, transportPayload, fallbackRows } from '../core/send.js';
 
@@ -166,9 +166,6 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     ]);
   }
 
-  /** Singular/plural label: `key` with {n}, or `keyOne` for 1. */
-  const count = (/** @type {string} */ key, /** @type {number} */ n) => (n === 1 ? t(`${key}One`) : fill(t(key), { n: fmt(n) }));
-
   async function copyDebug() {
     const text = debugText();
     try {
@@ -193,10 +190,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     return h('div', { className: greyed(c.id), 'data-village': c.id }, [
       h('div', {}, [h('b', { text: c.name }), ' ', h('span', { className: 'pp-muted', text: `(${c.x}|${c.y})` })]),
       sendButton(c.id, t('request'), () => click(c.id, () => post('call', c.id, requestPayload(tr, c.id)))),
-      h('div', {}, [h('span', { className: 'pp-badge', text: count('cardPackages', c.packages) })]),
+      h('div', {}, [h('span', { className: 'pp-badge', text: plural(t, 'cardPackages', c.packages) })]),
       h('div', { className: 'pp-muted' }, [
         res('wood', c.res.wood), ' ', res('stone', c.res.stone), ' ', res('iron', c.res.iron),
-        ` · ${count('fromVillages', c.sources)} · `,
+        ` · ${plural(t, 'fromVillages', c.sources)} · `,
         h('span', { title: far, text: fill(t('cardLastArrival'), { time: hm(c.lastArrivalSeconds) }) }),
       ]),
     ]);
@@ -208,7 +205,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     const sentCount = [...send.status.values()].filter((s) => s === 'sent').length;
     const g = v.target;
     const headline = [
-      h('b', { text: count('storableAfter', summary.packages) }),
+      h('b', { text: plural(t, 'storableAfter', summary.packages) }),
       summary.storableNow ? fill(t('storableSplit'), { now: fmt(summary.storableNow), added: fmt(summary.fromTransports) }) : '',
       g ? fill(t('storedTotal'), { n: fmt(g.stored + summary.packages) }) : '',
       ' → ',
@@ -216,7 +213,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     ];
     return [
       h('div', { className: 'pp-summary' }, [
-        g ? h('span', { text: fill(t('nobleTarget'), { ...g, n: fmt(g.packages), m: fmt(g.missing) }) }) : null,
+        g ? h('span', { text: plural(t, 'nobleTarget', g.x, { packages: fmt(g.packages), missing: fmt(g.missing) }) }) : null,
         h('span', {}, headline),
         cards.length
           ? h('span', { text: fill(t('lastArrival'), { time: hm(summary.lastArrivalSeconds), sent: sentCount, total: send.rows ? send.rows.length : cards.length }) })

@@ -3,6 +3,7 @@
 // `{name}` placeholders are filled by `fill()`.
 
 import { createI18n } from '../../shared/i18n.js';
+import { fmt } from './plan-view.js';
 
 const STRINGS = {
   en: {
@@ -20,7 +21,8 @@ const STRINGS = {
     storableAfterOne: '1 package storable after everything arrives',
     storableSplit: ' ({now} already now, {added} from these transports)',
     storedTotal: ' ({n} stored in total)',
-    nobleTarget: '{x} nobles = {n} packages, {m} still missing',
+    nobleTarget: '{n} nobles = {packages} packages, {missing} still missing',
+    nobleTargetOne: '1 noble = {packages} packages, {missing} still missing',
     noAcademyPage: 'Academy page not readable: no noble target',
     lastArrival: 'Last arrival in {time} · {sent} of {total} sent',
     planDetail: '{merchants} merchants · {academies} academy villages · {villages} villages read',
@@ -86,3 +88,10 @@ export const { resolveLang, makeTranslator } = i18n;
  * @param {Record<string, string | number>} vars
  */
 export const fill = (template, vars) => template.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+
+/**
+ * A counted label: `key` with `{n}` filled, or its `keyOne` variant for exactly 1.
+ * @param {(key: string) => string} t @param {string} key @param {number} n
+ * @param {Record<string, string | number>} [vars]
+ */
+export const plural = (t, key, n, vars = {}) => fill(t(n === 1 ? `${key}One` : key), { n: fmt(n), ...vars });

@@ -4,7 +4,7 @@
 // the edit form's parsing and the collapsed one-line summary. Pure (storage is injected).
 
 import { createSettingsStore } from '../../shared/settings-store.js';
-import { fill } from './i18n.js';
+import { fill, plural } from './i18n.js';
 import { fmt, hm, hms } from './plan-view.js';
 
 /**
@@ -145,7 +145,7 @@ export function settingsLine(s, t) {
   return [
     s.maxTravelSeconds == null ? t('noTravelLimit') : fill(t('settingMax'), { time: duration(s.maxTravelSeconds) }),
     fill(t('settingReserve'), { wood, stone, iron }),
-    s.keepMerchants === 1 ? t('settingKeepOne') : fill(t('settingKeep'), { n: fmt(s.keepMerchants) }),
+    plural(t, 'settingKeep', s.keepMerchants),
     fill(t('settingBuffer'), { pct: s.bufferPct }),
     `${groupName(s, s.senderGroup, t)} → ${groupName(s, s.receiverGroup, t)}`,
   ].concat(s.nobles ? fill(t('settingNobles'), { n: s.nobles }) : []).join(' · ');
