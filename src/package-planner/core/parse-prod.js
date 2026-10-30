@@ -9,7 +9,7 @@
 // Never reads translated header text.
 
 import { parseHtml, find, findAll, textOf, childElements, hasClass, intOf, is } from '../../shared/html.js';
-import { headerColumns, headerVillageCount, pageNumbers, rowShape } from './overview.js';
+import { groupMenu, headerColumns, headerVillageCount, pageNumbers, rowShape } from './overview.js';
 
 /** @typedef {import('../../shared/html.js').El} El */
 
@@ -33,10 +33,11 @@ export function parseProd(html) {
   /** @type {ProdVillage[]} */
   const villages = [];
   const pages = pageNumbers(root);
+  const groups = groupMenu(root);
   const table = find(root, is({ tag: 'table', id: 'production_table' }));
   if (!table) {
     warnings.push('prod: production table not found');
-    return { villages, expectedCount: null, pages, warnings, structure: { tableFound: false } };
+    return { villages, expectedCount: null, pages, groups, warnings, structure: { tableFound: false } };
   }
 
   const cols = headerColumns(table);
@@ -99,6 +100,7 @@ export function parseProd(html) {
     villages,
     expectedCount: headerVillageCount(table),
     pages,
+    groups,
     warnings,
     structure: {
       tableFound: true,

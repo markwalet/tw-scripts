@@ -1,9 +1,9 @@
 // package-planner/core/overview.js — what every premium village overview has in common:
 // the column a header sorts by (`order=<key>` in the th link: language-independent),
 // the village count in the "Village (65)" header, the paging links, and a value-free
-// "shape" of a row for the debug summary. Pure.
+// "shape" of a row for the debug summary, the village-group menu. Pure.
 
-import { findAll, find, textOf, childElements, is } from '../../shared/html.js';
+import { findAll, find, textOf, childElements, hasClass, is } from '../../shared/html.js';
 
 /** @typedef {import('../../shared/html.js').El} El */
 
@@ -73,3 +73,14 @@ export function rowShape(tr) {
     })
     .join(' ');
 }
+
+/**
+ * The player's village groups from the menu above every overview
+ * (`.group-menu-item[data-group-id]`, 0 = all and left out); [] when the page has none.
+ * The selected group is a <strong> (">name<"), the others are links ("[name]").
+ * @param {El} root
+ * @returns {Array<[number, string]>}
+ */
+export const groupMenu = (root) =>
+  findAll(root, (e) => hasClass(e, 'group-menu-item') && +e.attrs['data-group-id'] > 0)
+    .map((e) => [+e.attrs['data-group-id'], textOf(e).trim().replace(/^[[>]|[\]<]$/g, '').trim()]);

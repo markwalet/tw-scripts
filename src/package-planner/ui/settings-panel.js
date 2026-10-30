@@ -59,6 +59,9 @@ export function createSettingsPanel({ t, get, save }) {
     /** @param {keyof FormFields} k @param {number} width */
     const input = (k, width) =>
       (inputs[k] = /** @type {HTMLInputElement} */ (h('input', { type: 'text', value: f[k], size: width, on: { change: onChange } })));
+    /** A group dropdown: All + the groups last read from an overview. @param {'senderGroup' | 'receiverGroup'} k */
+    const group = (k) => (inputs[k] = /** @type {HTMLInputElement} */ (h('select', { on: { change: onChange } },
+      [[0, t('allGroups')], ...get().groups].map(([id, name]) => h('option', { value: id, text: name, selected: `${id}` === f[k] || null })))));
     /** @param {'wood' | 'stone' | 'iron'} k */
     const res = (k) => [h('span', { className: `icon header ${k}`, title: t(k) }), input(k, 6)];
     const row = (/** @type {string} */ label, /** @type {Node[]} */ cells, hint = '') =>
@@ -68,6 +71,8 @@ export function createSettingsPanel({ t, get, save }) {
       row('reserveLabel', [...res('wood'), ...res('stone'), ...res('iron')], 'reserveHint'),
       row('keepMerchantsLabel', [input('keepMerchants', 4)]),
       row('bufferLabel', [input('bufferPct', 4)], 'bufferHint'),
+      row('senderGroupLabel', [group('senderGroup')]),
+      row('receiverGroupLabel', [group('receiverGroup')], 'receiverGroupHint'),
       row('noblesLabel', [input('nobles', 4)], 'noblesHint'),
     ]);
   }

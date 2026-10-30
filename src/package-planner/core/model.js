@@ -22,10 +22,12 @@ const perHour = (level, base, speed) => base * 1.163118 ** (Math.max(1, level) -
  *   academyLevels: Map<number, number>,   village id -> academy level (Buildings overview)
  *   mineLevels?: Map<number, Res>,        village id -> timber camp, clay pit, iron mine level
  *   incoming?: Map<number, Res>,          village id -> resources on the way (Trader overview)
+ *   senders?: Set<number> | null,         sender group members (null = all)
+ *   receivers?: Set<number> | null,       receiver group members (null = all)
  *   config: { packageCost: { wood: number, stone: number, iron: number }, speed: number | null, baseProduction?: number | null },
  * }} input
  */
-export function solverInput({ villages, academyLevels, mineLevels = new Map(), incoming, config }) {
+export function solverInput({ villages, academyLevels, mineLevels = new Map(), incoming, senders, receivers, config }) {
   /** @type {string[]} */
   const warnings = [];
   const speed = config.speed && config.speed > 0 ? config.speed : null;
@@ -44,8 +46,9 @@ export function solverInput({ villages, academyLevels, mineLevels = new Map(), i
       res: [v.wood, v.stone, v.iron],
       storage: v.storageMax,
       merchants: v.merchantsAvailable,
-      academy: (academyLevels.get(v.id) ?? 0) >= 1,
+      academy: (academyLevels.get(v.id) ?? 0) >= 1 && (!receivers || receivers.has(v.id)),
     };
+    if (senders) sv.sender = senders.has(v.id);
     // On the way = already there (the solver caps it by the warehouse), spec §4.
     if (incoming?.has(v.id)) sv.inflight = incoming.get(v.id);
     // Production only matters where resources arrive: the warehouse margin (§5).
