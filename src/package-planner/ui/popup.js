@@ -9,6 +9,7 @@ import { h, injectStyle } from '../../shared/dom.js';
 import { fill, plural } from '../core/i18n.js';
 import { fmt, hm, hms } from '../core/plan-view.js';
 import { requestPayload, transportPayload, fallbackRows } from '../core/send.js';
+import { RES } from '../core/world-config.js';
 
 /** Click lock after each send (approved-scripts pattern): holding Enter = one send per lock. */
 const LOCK_MS = 200;
@@ -147,8 +148,8 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
       h('div', {}, [h('b', { text: from.name }), ` (${from.x}|${from.y}) → `, h('b', { text: to.name }), ` (${to.x}|${to.y})`]),
       sendButton(r.key, t('send'), () => click(r.key, () => post('map_send', tr.from, transportPayload(tr)))),
       h('div', { className: 'pp-muted' }, [
-        res('wood', tr.res[0]), ' ', res('stone', tr.res[1]), ' ', res('iron', tr.res[2]),
-        ` · ${fill(t('rowLine'), { merchants: tr.merchants, time: hms(tr.seconds) })}`,
+        ...resources(tr.res),
+        `· ${plural(t, 'rowLine', tr.merchants, { time: hms(tr.seconds) })}`,
       ]),
     ]);
   }
@@ -180,8 +181,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
 
   const storeLink = () => h('a', { className: 'pp-link', href: storeUrl, text: t('academyStore') });
 
-  /** @param {'wood' | 'stone' | 'iron'} k @param {number} n */
-  const res = (k, n) => h('span', { className: 'pp-res', title: t(k) }, [h('span', { className: `icon header ${k}` }), fmt(n)]);
+  /** Wood/clay/iron amounts with TW's icons, each followed by a space. @param {number[]} amounts */
+  const resources = (amounts) => RES.flatMap((k, i) => [
+    h('span', { className: 'pp-res', title: t(k) }, [h('span', { className: `icon header ${k}` }), fmt(amounts[i])]), ' ',
+  ]);
 
   /** @param {Card} c */
   function card(c) {
@@ -192,8 +195,8 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
       sendButton(c.id, t('request'), () => click(c.id, () => post('call', c.id, requestPayload(tr, c.id)))),
       h('div', {}, [h('span', { className: 'pp-badge', text: plural(t, 'cardPackages', c.packages) })]),
       h('div', { className: 'pp-muted' }, [
-        res('wood', c.res.wood), ' ', res('stone', c.res.stone), ' ', res('iron', c.res.iron),
-        ` · ${plural(t, 'fromVillages', c.sources)} · `,
+        ...resources(RES.map((k) => c.res[k])),
+        `· ${plural(t, 'fromVillages', c.sources)} · `,
         h('span', { title: far, text: fill(t('cardLastArrival'), { time: hm(c.lastArrivalSeconds) }) }),
       ]),
     ]);
