@@ -24,8 +24,8 @@ function startScript() {
   installResync();
 
   const world = tw.world();
-  const settings = load(world);
-  const persist = () => save(world, settings);
+  const settings = load(world, tw.storage());
+  const persist = () => save(world, settings, tw.storage());
   const t = makeTranslator(resolveLang(settings.language, tw.market()));
   initTabTitle(); // capture original title before the loop starts overwriting it
   setTabTitleEnabled(settings.tabTitle);

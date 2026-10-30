@@ -19,6 +19,15 @@ export function register(name, version, author, email) {
 /** Current world id, e.g. "nl123" — used to namespace per-world storage. */
 export const world = () => String(w.game_data?.world ?? 'unknown');
 
+/** Browser storage for the settings store (blocked storage -> nothing kept, no crash). */
+export function storage() {
+  try {
+    return /** @type {Storage} */ (w.localStorage);
+  } catch {
+    return { getItem: () => null, setItem() {} };
+  }
+}
+
 /** Market/language code, e.g. "nl" — the only language signal TW exposes (§9). */
 export const market = () => String(w.game_data?.market ?? 'en');
 

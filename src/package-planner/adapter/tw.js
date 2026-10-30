@@ -22,6 +22,15 @@ export function register(name, version, author, email) {
   }
 }
 
+/** Browser storage for the settings store (blocked storage -> nothing kept, no crash). */
+export function storage() {
+  try {
+    return /** @type {Storage} */ (w.localStorage);
+  } catch {
+    return { getItem: () => null, setItem() {} };
+  }
+}
+
 /** Market/language code, e.g. "en" — the only language signal TW exposes. */
 export const market = () => String(w.game_data?.market ?? 'en');
 

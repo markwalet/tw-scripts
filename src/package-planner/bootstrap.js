@@ -40,7 +40,8 @@ const report = { env };
 let config = null;
 let busy = false;
 /** Saved per world (localStorage); edited in the popup, used by the next Calculate. */
-let settings = settingsStore.load(env.world);
+let settings = settingsStore.load(env.world, tw.storage());
+const saveSettings = () => settingsStore.save(env.world, settings, tw.storage());
 
 const popup = createPopup({
   t,
@@ -54,7 +55,7 @@ const popup = createPopup({
   settingsPanel: createSettingsPanel({
     t,
     get: () => settings,
-    save: (next) => { settings = next; settingsStore.save(env.world, next); },
+    save: (next) => { settings = next; saveSettings(); },
   }),
 });
 
@@ -128,7 +129,7 @@ async function calculate() {
     report.incoming = incoming;
     // The group list for the dropdowns comes with the Production overview (no extra request).
     if (prod.groups?.length) settings = { ...settings, groups: prod.groups };
-    settingsStore.save(env.world, settings);
+    saveSettings();
     const villages = [...prod.byId.values()];
     const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
     const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
