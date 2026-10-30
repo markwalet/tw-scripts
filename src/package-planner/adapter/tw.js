@@ -52,8 +52,10 @@ export function env() {
   };
 }
 
-// Every request goes through ONE throttled queue: starts >= 200 ms apart (<= 5/s).
-const queue = createQueue({ concurrency: 2, maxAttempts: 2, minIntervalMs: 200 });
+// Every request goes through ONE throttled queue: starts >= 200 ms apart (<= 5/s). Kept on
+// window so running the script again (a second quickbar click) shares it: still <= 5/s.
+/** @type {ReturnType<typeof createQueue>} */
+const queue = (w.__nppQueue ??= createQueue({ concurrency: 2, maxAttempts: 2, minIntervalMs: 200 }));
 
 /** GET a same-origin URL as text, through the throttled queue (`&t=` added when sitting). @param {string} url */
 export function fetchText(url) {
@@ -69,8 +71,9 @@ export function fetchText(url) {
 /**
  * POST one market action through TW's own request helper (adds the csrf token, `&t=` when
  * sitting, and shows the game's error/captcha). Resolves once with how it ended; never
- * rejects, so the queue never retries. TW calls no callback on HTTP 429/503: a watchdog
- * turns "no answer" into a failure.
+ * rejects, and is queued with retry off: a POST is never sent twice. TW calls no callback
+ * on HTTP 429/503: a watchdog turns "no answer" into a failure. TribalWars.post throwing
+ * (TW changed) ends it as 'unavailable'.
  * @param {'call' | 'map_send'} action
  * @param {number} village  target for 'call', source for 'map_send'
  * @param {Record<string, number>} data
@@ -82,9 +85,14 @@ export function postMarket(action, village, data, timeoutMs = 10000) {
     const end = (/** @type {Parameters<typeof outcome>} */ ...r) => { clearTimeout(timer); resolve(outcome(...r)); };
     if (!w.TribalWars || typeof w.TribalWars.post !== 'function') return end('unavailable');
     timer = setTimeout(() => end('timeout'), timeoutMs);
-    w.TribalWars.post('market', { ajaxaction: action, village }, data,
-      (/** @type {unknown} */ r) => end('success', r), (/** @type {unknown} */ e) => end('error', e));
-  }));
+    try {
+      w.TribalWars.post('market', { ajaxaction: action, village }, data,
+        (/** @type {unknown} */ r) => end('success', r), (/** @type {unknown} */ e) => end('error', e));
+    } catch (err) {
+      console.error('[Noble Package Planner] TribalWars.post:', err);
+      end('unavailable');
+    }
+  }), { retry: false });
 }
 
 /**
@@ -105,24 +113,25 @@ export const academyStoreUrl = () => withSitter(`${String(gd().link_base_pure ??
 const CONFIG_TTL_MS = 24 * 3600 * 1000;
 
 /**
- * The public world config XML, cached per world for a day (only after it parsed fine,
- * see `cacheWorldConfig`).
- * @returns {Promise<string>}
+ * The public world config XML, cached per world for a day. `cached` = read from the cache:
+ * the caller stores only a fresh fetch (and only after it parsed fine, see
+ * `cacheWorldConfig`), so the day counts from the fetch and the cache does expire.
+ * @returns {Promise<{ xml: string, cached: boolean }>}
  */
 export async function worldConfigXml() {
   try {
-    const cached = JSON.parse(localStorage.getItem(`${gd().world}pp_config`) || 'null');
-    if (cached && Date.now() - cached.at < CONFIG_TTL_MS && typeof cached.xml === 'string') return cached.xml;
+    const cached = JSON.parse(storage().getItem(`${gd().world}pp_config`) || 'null');
+    if (cached && Date.now() - cached.at < CONFIG_TTL_MS && typeof cached.xml === 'string') return { xml: cached.xml, cached: true };
   } catch {
     /* no cache */
   }
-  return fetchText('/interface.php?func=get_config');
+  return { xml: await fetchText('/interface.php?func=get_config'), cached: false };
 }
 
-/** @param {string} xml */
+/** @param {string} xml  a freshly fetched config */
 export function cacheWorldConfig(xml) {
   try {
-    localStorage.setItem(`${gd().world}pp_config`, JSON.stringify({ at: Date.now(), xml }));
+    storage().setItem(`${gd().world}pp_config`, JSON.stringify({ at: Date.now(), xml }));
   } catch {
     /* storage full/blocked: just refetch next time */
   }
