@@ -30,7 +30,6 @@ const CSS = `
 .pp-root.pp-mobile{width:100%}
 `;
 
-
 /** @typedef {import('../core/plan-view.js').Card} Card */
 /** @typedef {ReturnType<typeof import('../core/plan-view.js').planView>} PlanView */
 
@@ -54,9 +53,10 @@ const CSS = `
  *   debugText: () => string,
  *   toast: (msg: string) => void,
  *   onCalculate: () => void,
+ *   settingsPanel: { element: () => HTMLElement, close: () => void },
  * }} deps
  */
-export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate }) {
+export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate, settingsPanel }) {
   injectStyle('pp-style', CSS);
   const host = h('div');
   let shown = false;
@@ -142,8 +142,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     }
   }
 
+  const configurable = () => view.status !== 'refused' && view.status !== 'starting';
+
   function calculateButton() {
-    if (view.status === 'refused' || view.status === 'starting') return null;
+    if (!configurable()) return null;
     const busy = view.status === 'loading' || view.status === 'calculating';
     return h('div', { className: 'pp-calc' }, [
       h('button', {
@@ -151,7 +153,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
         type: 'button',
         disabled: busy ? 'disabled' : null,
         text: t(calculated ? 'recalculate' : 'calculate'),
-        on: { click: () => { calculated = true; onCalculate(); } },
+        on: { click: () => { calculated = true; settingsPanel.close(); onCalculate(); } },
       }),
     ]);
   }
@@ -161,6 +163,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     view = next;
     const root = h('div', { className: mobile ? 'pp-root pp-mobile' : 'pp-root' }, [
       h('h3', { text: t('scriptName') }),
+      configurable() ? settingsPanel.element() : null,
       calculateButton(),
       ...body().filter(Boolean),
       h('div', { className: 'pp-actions' }, [
