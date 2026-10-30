@@ -5,6 +5,8 @@
 // Checks: lock ~200 ms, sent card moves to the bottom (list keeps its length), focus moves
 // to the next button (holding Enter = repeated clicks on the focused button), one request
 // per click, the failure path (game error, bot protection, no answer) and the fallback.
+// mobile-sitter: TW mobile + sitting, 360 px wide window, TW-like Dialog stub: no horizontal
+// scroll, send buttons on screen and tap-sized, no auto-focus, `&t=` on every own GET.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -18,9 +20,29 @@ const fx = clusterFixtures(4);
 // ---- runs in the page -----------------------------------------------------------------
 function stubs(fx, scenario) {
   window.__posts = [];
-  window.game_data = { world: 'en1', market: 'en', device: 'desktop', majorVersion: '9', player: { id: 1, sitter: '0' }, features: { Premium: { active: true } } };
+  window.__gets = [];
+  const mobile = scenario.name === 'mobile-sitter';
+  window.game_data = { world: 'en1', market: 'en', device: mobile ? 'mobile' : 'desktop', majorVersion: '9', link_base_pure: '/game.php?village=101&screen=',
+    player: { id: 1, sitter: mobile ? '7' : '0' }, features: { Premium: { active: true } } };
   window.UI = { SuccessMessage() {}, ErrorMessage() {} };
+  if (mobile) {
+    // Long names must wrap, not widen the popup.
+    fx.prod = fx.prod.replaceAll('data-text="Village ', 'data-text="Averyveryverylongvillagenamewithoutanyspaces');
+    // Like TW's Dialog: .popup_box gets `mobile` below 500 px; content goes in .popup_box_content.
+    window.jQuery = (n) => n;
+    window.Dialog = { show(id, el) {
+      const box = document.createElement('div');
+      box.className = `popup_box${innerWidth < 500 ? ' mobile' : ''}`;
+      box.style.cssText = 'position:absolute;left:0;right:0;top:0;padding:8px;background:#f4e4bc';
+      const content = document.createElement('div');
+      content.className = 'popup_box_content';
+      content.appendChild(el);
+      box.appendChild(content);
+      document.body.appendChild(box);
+    } };
+  }
   window.fetch = async (url) => {
+    window.__gets.push(String(url));
     const text = url.includes('get_config') ? fx.config : url.includes('mode=prod') ? fx.prod : url.includes('mode=buildings') ? fx.buildings : '';
     return { ok: true, status: 200, text: async () => text };
   };
@@ -50,6 +72,23 @@ async function driver(scenario) {
     await until(() => $$('.pp-calc button').length);
     $$('.pp-calc button')[0].click();
     await until(() => $$('.pp-card').length);
+    if (scenario.name === 'mobile-sitter') {
+      const doc = document.documentElement;
+      check('no horizontal scroll at 360 px', innerWidth <= 400 && doc.scrollWidth <= innerWidth 
+        && $$('.pp-root, .pp-root *').every((e) => e.getBoundingClientRect().right <= innerWidth + 0.5 && e.scrollWidth <= e.clientWidth + 1),
+        { innerWidth, scrollWidth: doc.scrollWidth, wide: $$('.pp-root, .pp-root *').filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.className) });
+      const rects = sendButtons().map((b) => b.getBoundingClientRect());
+      check('send buttons on screen and tap-sized', rects.length >= 3 && rects.every((r) => r.left >= 0 && r.right <= innerWidth && r.height >= 36), rects.map((r) => [r.left, r.right, r.height]));
+      check('no auto-focus on mobile (tap, no Enter-hold)', !document.activeElement?.classList.contains('pp-send'));
+      await sleep(300);
+      sendButtons()[0].click();
+      check('a tap sends one request', window.__posts.length === 1, window.__posts.length);
+      await sleep(250);
+      check('&t=<player id> on every own GET while sitting', window.__gets.length >= 3 && window.__gets.every((u) => /[?&]t=1(&|$)/.test(u)), window.__gets);
+      const links = $$('a[href*="game.php"]').map((a) => a.getAttribute('href'));
+      check('game links (Academy › Store) carry &t=', links.length >= 1 && links.every((u) => /[?&]t=1(&|$)/.test(u)), links);
+      throw 'done';
+    }
     const before = ids();
     check('several cards', before.length >= 3, before);
     check('focus on the first send button after Calculate', document.activeElement === sendButtons()[0]);
@@ -102,13 +141,13 @@ async function driver(scenario) {
       }
     }
   } catch (e) {
-    check('no exception', false, String(e && e.stack || e));
+    if (e !== 'done') check('no exception', false, String(e && e.stack || e));
   }
   out.posts = window.__posts.length;
   const pre = document.createElement('pre');
   pre.id = 'smoke-result';
   pre.textContent = btoa(unescape(encodeURIComponent(JSON.stringify(out))));
-  document.body.appendChild(pre);
+  parent.document.body.appendChild(pre); // parent === window outside the iframe
 }
 
 // ---- runner -----------------------------------------------------------------------------
@@ -117,6 +156,7 @@ const scenarios = [
   { name: 'game-error', failAt: 2, kind: 'game' },
   { name: 'captcha', failAt: 2, kind: 'captcha' },
   { name: 'no-answer', failAt: 2, kind: 'noAnswer' },
+  { name: 'mobile-sitter' },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));
 let failed = 0;
@@ -127,7 +167,9 @@ try {
 <script>${bundle.replace(/<\/script/gi, '<\\/script')}</script>
 <script>(${driver})(${JSON.stringify(s)});</script></body></html>`;
     const file = join(dir, `${s.name}.html`);
-    writeFileSync(file, html);
+    // Headless Chrome won't shrink its window below 500 px: run the narrow case in a 360 px iframe.
+    const narrow = (/** @type {string} */ x) => `<!doctype html><body style="margin:0"><iframe style="width:360px;height:740px;border:0" srcdoc="${x.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></iframe></body>`;
+    writeFileSync(file, s.name === 'mobile-sitter' ? narrow(html) : html);
     const dom = execFileSync(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${join(dir, 'profile')}`,
       '--virtual-time-budget=30000', '--dump-dom', `file://${file}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 120000 });
     const m = dom.match(/<pre id="smoke-result">([^<]*)<\/pre>/);

@@ -61,7 +61,8 @@ up where the old one stopped.
   required; no non-premium mode.
 - **Classic world**: world config `snob.gold === 0`. Coin worlds (`gold = 1`) are refused.
 - Works while **sitting** another account: TW's request helper adds `&t=<id>`
-  automatically; our own overview GETs must add it when `game_data.player.sitter > 0`.
+  automatically; our own GETs (and the Academy › Store link) get it from `core/urls.js`
+  `withSitter`, applied in the adapter's `fetchText`, when `game_data.player.sitter > 0`.
 
 ## 3. Architecture
 

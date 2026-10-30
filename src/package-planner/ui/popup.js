@@ -2,6 +2,8 @@
 // look). The dialog is shown ONCE; every render() replaces the contents of one host
 // element (re-calling Dialog.show closes and fades the dialog in again, which is slow).
 // TW-specific calls (showing the dialog) come in through `deps`, from the adapter.
+// Mobile (TW's mobile site, or TW's Dialog `mobile` class below 500 px): full width,
+// one-column cards with a full-width tap-sized send button, no auto-focus.
 
 import { h, injectStyle } from '../../shared/dom.js';
 import { fill } from '../core/i18n.js';
@@ -12,7 +14,7 @@ import { requestPayload, transportPayload, fallbackRows } from '../core/send.js'
 const LOCK_MS = 200;
 
 const CSS = `
-.pp-root{font:12px/1.4 Verdana,Arial,sans-serif;color:#000;width:min(560px,calc(100vw - 40px));box-sizing:border-box}
+.pp-root{font:12px/1.4 Verdana,Arial,sans-serif;color:#000;width:min(560px,calc(100vw - 40px));box-sizing:border-box;overflow-wrap:anywhere}
 .pp-root *{box-sizing:border-box}
 .pp-root h3{margin:0 0 6px;font-size:14px}
 .pp-root .pp-muted{color:#7d5a29;font-size:11px}
@@ -25,7 +27,7 @@ const CSS = `
 .pp-root .pp-calc{display:flex;margin:8px 0}
 .pp-root .pp-calc .btn{flex:1;padding:6px}
 .pp-root .pp-cards{display:flex;flex-direction:column;gap:6px;max-height:55vh;overflow:auto}
-.pp-root .pp-card{background:#f4e4bc;border:1px solid #c1a264;padding:6px 8px;display:grid;grid-template-columns:1fr auto;gap:4px 10px}
+.pp-root .pp-card{background:#f4e4bc;border:1px solid #c1a264;padding:6px 8px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
 .pp-root .pp-card>*{grid-column:1}
 .pp-root .pp-card>.btn{grid-column:2;grid-row:1/span 3;align-self:start}
 .pp-root .pp-card.pp-done{opacity:.45}
@@ -33,7 +35,11 @@ const CSS = `
 .pp-root .pp-res{white-space:nowrap}
 .pp-root .pp-res .icon{margin-right:2px}
 .pp-root textarea{width:100%;height:120px;font:11px monospace;margin-top:6px}
-.pp-root.pp-mobile{width:100%}
+.pp-mobile,.mobile .pp-root{width:100%}
+.pp-mobile .pp-cards,.mobile .pp-cards{max-height:none}
+.pp-mobile .pp-card,.mobile .pp-card{grid-template-columns:minmax(0,1fr)}
+.pp-mobile .pp-card>.btn,.mobile .pp-card>.btn{grid-column:1;grid-row:auto}
+.pp-mobile .btn,.mobile .pp-root .btn{min-height:40px}
 `;
 
 /** @typedef {import('../core/plan-view.js').Card} Card */
@@ -283,7 +289,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
       shown = true; // once: if the user closes it, later renders just update a detached host
       show('package_planner', host, () => {});
     }
-    if (focusNext && firstSend) {
+    if (focusNext && firstSend && !mobile) { // mobile: tap only, no Enter-hold
       focusNext = false;
       firstSend.focus();
     }
