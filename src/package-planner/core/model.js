@@ -9,10 +9,11 @@
  * @param {{
  *   villages: ProdVillage[],
  *   academyLevels: Map<number, number>,   village id -> academy level (Buildings overview)
+ *   incoming?: Map<number, [number, number, number]>,  village id -> resources on the way (Trader overview)
  *   config: { packageCost: { wood: number, stone: number, iron: number }, speed: number | null },
  * }} input
  */
-export function solverInput({ villages, academyLevels, config }) {
+export function solverInput({ villages, academyLevels, incoming, config }) {
   /** @type {string[]} */
   const warnings = [];
   const speed = config.speed && config.speed > 0 ? config.speed : null;
@@ -28,6 +29,8 @@ export function solverInput({ villages, academyLevels, config }) {
         storage: v.storageMax,
         merchants: v.merchantsAvailable,
         academy: (academyLevels.get(v.id) ?? 0) >= 1,
+        // On the way = already there (the solver caps it by the warehouse), spec §4.
+        ...(incoming?.has(v.id) ? { inflight: incoming.get(v.id) } : {}),
       })),
     },
     options: { cost: /** @type {[number, number, number]} */ ([c.wood, c.stone, c.iron]), worldSpeed: speed ?? 1 },
