@@ -22,7 +22,7 @@ export function upperBound(world, options = {}) {
 
 /**
  * @param {(world: any, options: any) => any} solver
- * @returns {{ packages: number, bound: number, ms: number, merchants: number, resourceHours: number, errors: string[] }}
+ * @returns {{ packages: number, bound: number, ms: number, merchants: number, longestSeconds: number, resourceHours: number, errors: string[] }}
  */
 export function runCase(solver, world, options = {}, repeat = 1) {
   let plan;
@@ -34,6 +34,7 @@ export function runCase(solver, world, options = {}, repeat = 1) {
     bound: upperBound(world, options),
     ms: Math.round(ms * 10) / 10,
     merchants: plan.merchants,
+    longestSeconds: plan.longestSeconds,
     resourceHours: Math.round(plan.resourceHours),
     errors: verifyPlan(world, options, plan),
   };

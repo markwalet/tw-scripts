@@ -6,6 +6,7 @@ import { generateTinyWorld } from './fixtures/world-gen.js';
 import { bruteForce, planModelCost } from './fixtures/brute-force.js';
 import { balancerFailures } from './fixtures/balancer-failures.js';
 import { academyHeavy } from './fixtures/academy-heavy.js';
+import { academyHeavyProduction } from './fixtures/academy-heavy-production.js';
 
 /** Shorthand village: id, coords, resources, merchants; full 400k warehouse. */
 const village = (id, x, y, res, merchants = 100, extra = {}) => ({
@@ -13,6 +14,9 @@ const village = (id, x, y, res, merchants = 100, extra = {}) => ({
 });
 const academy = (id, x, y, res, merchants = 100, extra = {}) =>
   village(id, x, y, res, merchants, { academy: true, ...extra });
+
+/** Options that turn the travel-cap search off: one solve under the user's cap. */
+const SINGLE_SOLVE = { capFactors: [], capTighten: 0 };
 
 function solveValid(world, options = {}) {
   const plan = solve(world, options);
@@ -228,9 +232,14 @@ test('tiny random worlds: package count equals the brute-force optimum', () => {
     const plan = solveValid(world, options);
     const best = bruteForce(world, options);
     assert.equal(plan.packages, best.packages, `seed ${seed}`);
-    // Secondary objective: resource-hours. Allowed slack: 6%, in at most 1% of worlds
-    // (the spike measured 1 world in 3000 off, by 5%).
-    const cost = planModelCost(world, options, plan);
+    // The travel-cap search never makes a plan worse: as many packages, and then never a
+    // later last arrival than the single solve under the user's cap.
+    const single = solveValid(world, { ...options, ...SINGLE_SOLVE });
+    assert.ok(plan.packages > single.packages || (plan.packages === single.packages && plan.longestSeconds <= single.longestSeconds), `seed ${seed}: worse than one solve`);
+    // The single solve's routing: resource-hours. Allowed slack: 6%, in at most 1% of
+    // worlds (the spike measured 1 world in 3000 off, by 5%).
+    assert.equal(single.packages, best.packages, `seed ${seed}`);
+    const cost = planModelCost(world, options, single);
     assert.ok(cost >= best.cost, `seed ${seed}: beats the optimum?`);
     assert.ok(cost <= best.cost * 1.06, `seed ${seed}: cost ${cost} vs optimum ${best.cost}`);
     if (cost > best.cost) notCheapest++;
@@ -243,6 +252,32 @@ test('a real account where nearly every village has an academy: leftovers pooled
   // whole-load iron bound is 73. Shipping only to each source's 20 nearest academies got 58.
   const { world, options } = academyHeavy;
   assert.equal(solveValid(world, options).packages, 72);
+});
+
+test('as many packages: the earlier last arrival wins over fewer resource-hours', () => {
+  // Each source holds one package, each warehouse fits one. Nearest-first: 1 + 7.8 fields
+  // (last arrival 7.8); crosswise: 5 + 5 fields, more resource-hours, all there after 5.
+  const one = [28000, 30000, 25000];
+  const small = { storage: 40000 };
+  const world = {
+    villages: [
+      academy(1, 500, 500, [0, 0, 0], 0, small), academy(2, 506, 500, [0, 0, 0], 0, small),
+      village(3, 501, 500, one), village(4, 500, 505, one),
+    ],
+  };
+  const plan = solveValid(world);
+  assert.equal(plan.packages, 2);
+  assert.equal(plan.longestSeconds, 5 * 360);
+  assert.deepEqual(plan.transports.map((t) => [t.from, t.to]).sort(), [[3, 2], [4, 1]]);
+});
+
+test('most packages first, then the earliest last arrival: a tighter travel cap the user never set can win both', () => {
+  // Single solves on this real account: no cap 71 / 0:31, cap 25 min 71 / 0:23, cap 20 min
+  // 72 / 0:20. The solver tries such caps itself and keeps the best plan.
+  const { world, options } = academyHeavyProduction;
+  const plan = solveValid(world, options);
+  assert.ok(plan.packages >= 72, `${plan.packages} packages`);
+  assert.ok(plan.longestSeconds <= 20 * 60, `last arrival ${plan.longestSeconds} s`);
 });
 
 for (const [name, { world, options, expected }] of Object.entries(balancerFailures)) {

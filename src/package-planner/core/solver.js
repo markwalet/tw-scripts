@@ -75,32 +75,85 @@ export const DEFAULTS = Object.freeze({
   improveRounds: 3,
   improveBudget: 150,
   improveMaxAcademies: 40,
+  /** Earliest last arrival: re-solve under these fractions of the first plan's last
+   *  arrival, then tighten the best plan by 7% at most this many times… */
+  capFactors: [0.85, 0.7, 0.6, 0.5],
+  capTighten: 2,
+  /** …while the work so far plus the last solve's stays within this many Dijkstra steps
+   *  (~5 M/s on an M4 Pro: the real 65-village account takes ~0.5 M per solve). */
+  capSearchWork: 4e6,
 });
 
 const BIG = 1 << 30;
 /** Ordering penalty per merchant load for the merchant-scarce retry (see solve()). */
 const MERCHANT_PENALTY = 100000;
 
+/** Objective order: most packages, then earliest last arrival, then fewest resource-hours. */
+const better = (/** @type {Plan} */ p, /** @type {Plan} */ q) =>
+  p.packages !== q.packages ? p.packages > q.packages
+    : p.longestSeconds !== q.longestSeconds ? p.longestSeconds < q.longestSeconds
+      : p.resourceHours < q.resourceHours;
+
 /**
- * Plan transports that complete as many packages as possible (then: fewest
- * resource-hours). See DESIGN-package-planner.md §5.
+ * Plan transports that complete as many packages as possible, then arrive as early as
+ * possible, then cost the fewest resource-hours. See DESIGN-package-planner.md §5.
+ *
+ * The greedy minimises resource-hours, and on the way commits to far deliveries that a
+ * tighter travel cap avoids: such a cap can even complete MORE packages. So the solve is
+ * repeated under a few caps below the first plan's last arrival (the user's own max travel
+ * time stays the upper bound) and the best plan is kept. The repeats stop at a work budget
+ * (Dijkstra steps, so it's deterministic): big or scarce worlds get one solve, as before.
  * @param {{ villages: Village[] }} world
  * @param {Partial<typeof DEFAULTS>} [options]
  * @returns {Plan}
  */
 export function solve(world, options = {}) {
-  const model = buildModel(world, { ...DEFAULTS, ...options });
+  const o = { ...DEFAULTS, ...options };
+  let work = 0;
+  let last = 0;
+  const run = (/** @type {number} */ cap) => {
+    const r = solveOnce(world, { ...o, maxTravelSeconds: cap });
+    last = r.work;
+    work += last;    return r.plan;
+  };
+  let best = run(o.maxTravelSeconds);
+  const first = best.longestSeconds;
+  const room = () => work + last <= o.capSearchWork;
+  // Sweep down from the first plan's last arrival; stop once a cap clearly loses packages.
+  for (const f of o.capFactors) {
+    const cap = Math.floor(first * f);
+    if (cap >= best.longestSeconds) continue;
+    if (!room()) break;
+    const was = best.packages;
+    const p = run(cap);
+    if (better(p, best)) best = p;
+    if (p.packages < was * 0.99) break;
+  }
+  // Then tighten the best plan while that keeps improving it.
+  for (let i = 0; i < o.capTighten && best.longestSeconds > 0 && room(); i++) {
+    const p = run(Math.floor(best.longestSeconds * 0.93));
+    if (!better(p, best)) break;
+    best = p;
+  }
+  return best;
+}
+
+/** One solve under the options' travel cap. `work` = Dijkstra steps it took. */
+function solveOnce(/** @type {{ villages: Village[] }} */ world, /** @type {typeof DEFAULTS} */ o) {
+  const model = buildModel(world, o);
   let best = optimise(model, 0);
+  let work = best.work;
   // Cheapest-first spends merchants on cheap but merchant-hungry packages. When merchants
   // ran out before the resources did, retry with every merchant load made expensive (this
   // only changes the greedy's ORDER: for fixed packages the routing is the same min-cost
   // flow, since the number of loads is fixed by the deficits). Keep the better plan.
   if (best.packages < model.bound && best.merchantsLeft < 0.05 * model.merchants) {
     const alt = optimise(model, MERCHANT_PENALTY);
+    work += alt.work;
     if (alt.packages > best.packages || (alt.packages === best.packages && alt.resourceHours < best.resourceHours)) best = alt;
   }
-  const { merchantsLeft, ...plan } = best;
-  return plan;
+  const { merchantsLeft, work: _, ...plan } = best;
+  return { plan, work };
 }
 
 /** Everything about the input that doesn't depend on the plan. */
@@ -388,6 +441,7 @@ function optimise(model, penalty) {
     longestSeconds: result.reduce((m, t) => Math.max(m, t.seconds), 0),
     resourceHours: result.reduce((sum, t) => sum + ((t.res[0] + t.res[1] + t.res[2]) * t.seconds) / 3600, 0),
     merchantsLeft: avail.reduce((sum, m, s) => sum + m - net.flow(merchantArcs[s]), 0),
+    work: net.work,
   };
 }
 
@@ -424,6 +478,8 @@ class FlowNetwork {
     /** @type {number[]} */ this.log = [];
     this.open = 0;
     this.lastDist = 0;
+    /** Dijkstra steps so far: a deterministic measure of solve time. */
+    this.work = 0;
   }
 
   /** @param {number} u @param {number} v @param {number} cap @param {number} cost */
@@ -564,6 +620,7 @@ class FlowNetwork {
     while (heap.size) {
       const u = heap.popNode();
       const du = heap.lastKey;
+      this.work++;
       if (du > dist[u]) continue;
       if (u !== start && (u === 0 || (forward ? bal[u] < 0 : bal[u] > 0))) { target = u; dT = du; break; }
       // Forward: arc u->v. Backward: the paired arc v->u, read against its direction.

@@ -238,29 +238,30 @@ async function driver(scenario) {
       throw 'done';
     }
     if (scenario.stock) {
-      // Plan of the 4-cluster fixture, card order 103 403 305 105 205 203 405; source 301
-      // ships 10,813 iron into 305, 10,813 into 205, 110 into 203 and 813 into 405.
+      // Plan of the 4-cluster fixture, card order 103 303 405 105 205 203 403; source 301
+      // ships 13,000 iron into 303, 10,813 into 205 and 110 into 203; source 201 ships 5,813
+      // into 105 and 19,000 into 203.
       const sendAll = async (n) => { for (let i = 0; i < n; i += 1) { await sleep(300); sendButtons()[0].click(); } await sleep(300); };
       const card = (id) => $$(`.pp-card[data-village="${id}"]`)[0];
       const payload = (to) => window.__posts.find((p) => String(p.params.village) === to)?.data;
-      check('card order of the fixture plan', ids().join() === '103,403,305,105,205,203,405', ids());
+      check('card order of the fixture plan', ids().join() === '103,303,405,105,205,203,403', ids());
       if (scenario.name === 'precheck') {
-        await sendAll(3); // 103, 403, 305: the game now reports 301 has 5,300 iron left
+        await sendAll(3); // 103, 303, 405: the game now reports 301 has 5,300 iron left
         const reduced = $$('.pp-card').filter((c) => /reduced/i.test(c.textContent)).map((c) => c.getAttribute('data-village'));
         check('before the next send, the card whose source the game reports short says so', reduced.join() === '205', reduced);
         check('reduced card names the packages that may be short', /1 package may be short/.test(card('205').textContent), card('205').textContent);
-        await sendAll(2); // 105, 205: 301 now has 300 iron left
-        check('next short card marked before its send', /reduced/i.test(card('405').textContent) && !/reduced/i.test(card('203').textContent), [card('405').textContent, card('203').textContent]);
-        await sendAll(2); // 203, 405
+        await sendAll(2); // 105, 205: 201 now has 500 iron left, 301 has 300
+        check('next short card marked before its send', /reduced/i.test(card('203').textContent) && !/reduced/i.test(card('403').textContent), [card('203').textContent, card('403').textContent]);
+        await sendAll(2); // 203, 403
         check('one request per click, no failure', window.__posts.length === 7 && !$$('.pp-error').length, { posts: window.__posts.length, err: $$('.pp-error').map((e) => e.textContent) });
         const p205 = payload('205');
         check('short source trimmed to what it has, whole merchant loads', p205['resource[301][iron]'] === 5000 && p205['resource[204][wood]'] === 3894, p205);
         check('source with what is planned is not trimmed (110 iron of 300 left)', payload('203')['resource[301][iron]'] === 110, payload('203'));
-        const p405 = payload('405');
-        check('source left with less than one load drops out of the card', !('resource[301][iron]' in p405) && p405['resource[401][iron]'] === 5000, p405);
+        const p203 = payload('203');
+        check('source left with less than one load drops out of the card', !('resource[201][iron]' in p203) && p203['resource[202][iron]'] === 1000, p203);
         check('all cards sent', $$('.pp-card').every((c) => c.textContent.includes('✓ Sent')), ids());
       } else {
-        await sendAll(5); // 103, 403, 305, 105 ok; 205: source 204 really has 1,000 wood (overview: 30,879)
+        await sendAll(5); // 103, 303, 405, 105 ok; 205: source 204 really has 1,000 wood (overview: 30,879)
         const err = $$('.pp-error').map((e) => e.textContent).join(' ');
         check('the game\'s failure is shown', err.includes('Not enough resources available'), err);
         $$('.pp-actions button').find((b) => b.textContent === 'Copy debug info').click();
@@ -269,7 +270,7 @@ async function driver(scenario) {
         check('debug info: the failed request and the game\'s message', dbg.includes('failed send: call to village 205 (game): Not enough resources available'), dbg);
         check('debug info: raw answer', dbg.includes('raw: "Not enough resources available"'), dbg);
         check('debug info: source never reported: sent amounts + overview snapshot', dbg.includes('source 204: sent 3894/0/0 (4 merchants); overview 30879/60779/719 (14 merchants); game reported none'), dbg);
-        check('debug info: source reported by an earlier answer', dbg.includes('source 301: sent 0/0/10813 (11 merchants); overview 33140/44720/50294 (46 merchants); game reported 900000/900000/889187 (35 merchants)'), dbg);
+        check('debug info: source reported by an earlier answer', dbg.includes('source 301: sent 0/0/10813 (11 merchants); overview 33140/44720/50294 (46 merchants); game reported 900000/900000/887000 (33 merchants)'), dbg);
         check('debug info: no village names or coordinates', !/Village|\d{3}\|\d{3}/.test(dbg), dbg);
         $$('.pp-calc button')[0].click(); // a new plan: the record stays until the popup closes
         await until(() => $$('.pp-card').length && !$$('.pp-calc button')[0].disabled);
@@ -358,8 +359,9 @@ const scenarios = [
   { name: 'config-cache' },
   { name: 'config-fails', configFails: 2 },
   { name: 'run-twice', twice: true },
-  // #16: the real stock of 301 is below the overview (16,113 iron, not 50,294).
-  { name: 'precheck', stock: { 301: { res: [9e5, 9e5, 16113] } } },
+  // #16: the real stock of 301 and 201 is below the overview (18,300 and 6,313 iron, not
+  // 50,294 and 109,823).
+  { name: 'precheck', stock: { 301: { res: [9e5, 9e5, 18300] }, 201: { res: [9e5, 9e5, 6313] } } },
   // #16: 204 really has 1,000 wood (overview 30,879): card 205 fails, evidence kept.
   { name: 'failure-record', stock: { 204: { res: [1000, 9e5, 9e5] } } },
 ];

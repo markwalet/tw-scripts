@@ -148,8 +148,10 @@ src/
 ### Objective (lexicographic)
 1. **Maximise total complete packages** across all academy villages (packages are
    account-wide, so which academy stores them doesn't matter).
-2. Then **minimise resource-hours on the road**: Σ amount × travel time.
-3. Hard limit: **max travel time** (setting).
+2. Then **earliest last arrival**: the plan's longest transport (#17, user decision
+   2026-10-30: every package is usable once the last delivery is in).
+3. Then **minimise resource-hours on the road**: Σ amount × travel time.
+4. Hard limit: **max travel time** (setting).
 
 Planned globally across all villages at once. No clusters, no averaging. This is the
 fix for what existing balancers get wrong (see §9).
@@ -255,6 +257,29 @@ closed). Details that were measured:
   Bench before → after: 500/120 scarce 0.95–1.72 s → 0.94–1.68 s, typical 14–656 ms →
   13–635 ms (noise), 0.1–0.3% fewer merchants. Real account: 71 packages either way, 1025 →
   1022 merchants, ~90 → ~110 ms. Finer units (100s) were not tried: ~10× the flow.
+- **Earliest last arrival: a travel-cap search** (#17). The greedy minimises resource-hours
+  and on the way commits to far deliveries that a tighter cap avoids, and a tighter cap can
+  even complete *more* packages: on the user's real account (with production) single solves
+  gave no cap 71 / last arrival 0:31, cap 25 min 71 / 0:23, 20 min 72 / 0:20, 15 min 69,
+  10 min 62. So `solve` repeats the whole solve under caps of 0.85, 0.7, 0.6, 0.5 × the
+  first plan's last arrival (skipping a cap the best plan already beats; stopping once one
+  loses > 1% packages), then tightens the best plan by 7% up to 2 times while that improves
+  it, and keeps the best plan by the order above. The user's max travel time stays the
+  upper bound (every tried cap is below it). Not a binary search: packages vs cap is not
+  monotone (the 72 above exists only between 19 and 21 min). **Budget**: a new solve starts
+  only while the work so far plus the last solve's stays ≤ 4 M Dijkstra steps (counted, so
+  it's deterministic; ~5 M/s here, ~0.5 M per solve on the real account). Worlds whose first
+  solve takes > ~0.4 s get that one solve, as before. Measured: tiny worlds still equal the
+  brute-force package count (400/400); the real account (fixture
+  `academy-heavy-production.js`) 71 / 0:31 in ~120 ms → **72 / 0:19 in ~0.6 s** (6 solves).
+  Bench, last arrival single solve → search (time before → after): 100/25 6:22, 3:45, 4:19 →
+  3:06, 2:56, 3:31 (40–200 → 180–580 ms); 500/120 half-full 2:32, 1:41, 2:26 → 2:09, 1:04,
+  2:26 (140–660 → 550–640 ms); mostly full 0:42 → 0:34 on one seed (13–15 → 20–23 ms);
+  production max 3h 1092, 1089, 1072 packages → **1093, 1091, 1075**, last 1:21–2:08 →
+  1:02–1:29 (70–140 → 260–570 ms); 800/200 1:26, 1:20 → 0:51, 0:55, third seed unchanged
+  (200–780 → 700–800 ms); wide map max 2h unchanged (22–48 → 44–79 ms); nearly empty and few
+  merchants unchanged, still one solve (0.95–1.67 s). Never fewer packages. Bundle
+  81.5 → 83.0 KB (+1.6 KB, not minified).
 - Travel time: `round(distance × 360 / speed)` s, `speed` from the world config, no
   `unit_speed` (matches all 64 rows of the real Request-resources page, enc1 speed 3.6).
 
@@ -264,17 +289,19 @@ closed). Details that were measured:
 | Check | (a) greedy + flow | (b) LP + rounding |
 |---|---|---|
 | Tiny worlds (3–6 villages, 1–3 academies) vs brute force, package count | 3000/3000 optimal | 998/1000 |
-| Same, resource-hours | 2999/3000 optimal, worst +5% | — |
+| Same, resource-hours (single solve, before the cap search of #17) | 2999/3000 optimal, worst +5% | — |
 | 30–60 villages vs LP upper bound | = bound in 13/18; ≤ 2 below (≤ 2.6%), only when merchants bind | its own LP |
 | §9 failure fixtures (cluster border, average on full warehouses, nearest-first starvation, small sends dropped, remainder cut) | all optimal | — |
-| 100 villages / 25 academies | 30–180 ms | dense simplex: 29 s |
-| 500 / 120, typical (half-full or full warehouses, max travel set) | 12–610 ms, = upper bound when it's reachable | dense tableau ~2,400 × 30,000 (≈ 580 MB): not feasible |
-| 500 / 120, scarce (nearly empty warehouses, or 0–40 merchants) | 0.9–1.6 s | — |
-| 800 / 200 | 0.2–0.8 s | — |
+| 100 villages / 25 academies | 30–180 ms; with the cap search (#17) 0.18–0.58 s | dense simplex: 29 s |
+| 500 / 120, typical (half-full or full warehouses, max travel set) | 12–610 ms, = upper bound when it's reachable; with the cap search 20–640 ms | dense tableau ~2,400 × 30,000 (≈ 580 MB): not feasible |
+| 500 / 120, scarce (nearly empty warehouses, or 0–40 merchants) | 0.9–1.6 s (one solve, also with the cap search) | — |
+| 800 / 200 | 0.2–0.8 s; with the cap search 0.7–0.8 s | — |
 | Size | ≈ 19 KB bundled, not minified (≈ 9 KB minified), no dependency | + simplex, and still needs (a)'s flow for rounding |
 
 **Mobile estimate**: phone CPUs run this kind of JS ~3–4× slower, so typical worlds take
 ≲ 2 s and scarce ones 3–6 s. That misses the "≲ 1 s on mobile" wish for scarce worlds.
+The cap search (#17) keeps that ceiling (its budget is ~0.8 s here, ~3 s on a phone) but
+fills it: the user's real account goes from ~0.4 s to ~2 s on a phone.
 The popup should show a *Calculating…* state and run the solver after a paint (#5).
 
 Acceptance on large worlds: the count is reported against a cheap upper bound
