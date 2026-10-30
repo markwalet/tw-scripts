@@ -27,7 +27,7 @@ function overviewLine(label, s) {
  *   env?: { world?: string, market?: string, device?: string, version?: string, premium?: boolean, sitting?: boolean, villages?: number | null },
  *   config?: { gold: boolean | null, packageCost: { wood: number, stone: number, iron: number }, speed: number | null, unitSpeed: number | null, warnings: string[] } | null,
  *   prod?: { byId: Map<number, any>, warnings: string[], structure: any } | null,
- *   buildings?: { byId: Map<number, number>, warnings: string[], structure: any } | null,
+ *   buildings?: { byId: Map<number, { academy: number }>, warnings: string[], structure: any } | null,
  *   incoming?: { warnings: string[], structure: any } | null,
  *   result?: { packages: number, academies: number, villages: number, notInBuildings: number } | null,
  *   plan?: { packages: number, cards: number, transports: number, merchants: number, longestSeconds: number, ms: number } | null,
@@ -51,7 +51,7 @@ export function buildDebugInfo(r) {
   if (r.buildings) {
     /** @type {Record<number, number>} */
     const hist = {};
-    for (const l of r.buildings.byId.values()) hist[l] = (hist[l] || 0) + 1;
+    for (const { academy: l } of r.buildings.byId.values()) hist[l] = (hist[l] || 0) + 1;
     lines.push(`academy levels: ${Object.entries(hist).map(([l, n]) => `${l}:${n}`).join(' ')}`);
   }
   const inc = r.incoming?.structure;

@@ -12,20 +12,22 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { clusterFixtures } from './fixtures/clusters.js';
+import { academyPage } from './fixtures/academy.js';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const bundle = readFileSync(new URL('../../dist/package-planner.js', import.meta.url), 'utf8');
-const fx = clusterFixtures(4);
+const fx = { ...clusterFixtures(4), academy: academyPage(2, 3) };
 
 // ---- runs in the page -----------------------------------------------------------------
 function stubs(fx, scenario) {
   window.__posts = [];
   window.__gets = [];
   const mobile = scenario.name === 'mobile-sitter';
+  localStorage.clear();
+  if (scenario.nobles) localStorage.setItem('en1pp_settings', JSON.stringify({ version: 1, nobles: scenario.nobles }));
   window.game_data = { world: 'en1', market: 'en', device: mobile ? 'mobile' : 'desktop', majorVersion: '9', link_base_pure: '/game.php?village=101&screen=',
     player: { id: 1, sitter: mobile ? '7' : '0' }, features: { Premium: { active: true } } };
   window.UI = { SuccessMessage() {}, ErrorMessage() {} };
-  localStorage.clear(); // scenarios share one Chrome profile
   if (scenario.name === 'groups') {
     localStorage.setItem('en1pp_settings', JSON.stringify({ version: 1, senderGroup: 5, receiverGroup: 6 }));
     fx.prod = `<div class="vis_item">Groups: <strong class="group-menu-item" data-group-id="0">&gt;all&lt;</strong>
@@ -49,7 +51,7 @@ function stubs(fx, scenario) {
   }
   window.fetch = async (url) => {
     window.__gets.push(String(url));
-    const text = url.includes('get_config') ? fx.config : url.includes('mode=prod') ? fx.prod : url.includes('mode=buildings') ? fx.buildings : '';
+    const text = url.includes('get_config') ? fx.config : url.includes('mode=prod') ? fx.prod : url.includes('mode=buildings') ? fx.buildings : url.includes('screen=snob') ? fx.academy : '';
     return { ok: true, status: 200, text: async () => text };
   };
   window.TribalWars = {
@@ -77,7 +79,15 @@ async function driver(scenario) {
   try {
     await until(() => $$('.pp-calc button').length);
     $$('.pp-calc button')[0].click();
-    await until(() => $$('.pp-card').length);
+    await until(() => $$(scenario.nobles ? '.pp-summary' : '.pp-card').length);
+    if (scenario.nobles) {
+      // Academy fixture: price 2, stored 3 -> 2 nobles = 2 + 3 = 5 packages, 2 still missing.
+      const text = $$('.pp-summary')[0]?.textContent || '';
+      check('noble target line in the summary', text.includes('2 nobles = 5 packages, 2 still missing'), text);
+      check('plan capped at the missing packages', text.includes('2 packages storable') && text.includes('(5 stored in total)'), text);
+      check('one academy page read', window.__gets.filter((u) => u.includes('screen=snob')).length === 1, window.__gets);
+      throw 'done';
+    }
     if (scenario.name === 'mobile-sitter') {
       const doc = document.documentElement;
       check('no horizontal scroll at 360 px', innerWidth <= 400 && doc.scrollWidth <= innerWidth 
@@ -91,6 +101,7 @@ async function driver(scenario) {
       check('a tap sends one request', window.__posts.length === 1, window.__posts.length);
       await sleep(250);
       check('&t=<player id> on every own GET while sitting', window.__gets.length >= 3 && window.__gets.every((u) => /[?&]t=1(&|$)/.test(u)), window.__gets);
+      check('no academy page read without a noble target', !window.__gets.some((u) => u.includes('screen=snob')), window.__gets);
       const links = $$('a[href*="game.php"]').map((a) => a.getAttribute('href'));
       check('game links (Academy › Store) carry &t=', links.length >= 1 && links.every((u) => /[?&]t=1(&|$)/.test(u)), links);
       throw 'done';
@@ -176,6 +187,7 @@ const scenarios = [
   { name: 'no-answer', failAt: 2, kind: 'noAnswer' },
   { name: 'mobile-sitter' },
   { name: 'groups' },
+  { name: 'noble-target', nobles: 2 },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));
 let failed = 0;

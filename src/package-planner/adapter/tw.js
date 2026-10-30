@@ -81,6 +81,10 @@ export function postMarket(action, village, data, timeoutMs = 10000) {
  */
 export const overviewUrl = (mode, page, group = 0) =>
   `${String(gd().link_base_pure ?? '/game.php?screen=')}overview_villages&mode=${mode}${mode === 'trader' ? '&type=inc' : ''}&group=${group}&page=${page}`;
+
+/** The academy page of a village that has one (price of the next noble, stored packages). @param {number} village */
+export const academyUrl = (village) => `/game.php?village=${village}&screen=snob`;
+
 /** Link to Academy › Store (the mass-store sub-tab). */
 export const academyStoreUrl = () => withSitter(`${String(gd().link_base_pure ?? '/game.php?screen=')}snob&mode=reserve`, gd().player || {});
 

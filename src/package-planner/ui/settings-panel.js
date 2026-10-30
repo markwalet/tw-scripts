@@ -73,6 +73,7 @@ export function createSettingsPanel({ t, get, save }) {
       row('bufferLabel', [input('bufferPct', 4)], 'bufferHint'),
       row('senderGroupLabel', [group('senderGroup')]),
       row('receiverGroupLabel', [group('receiverGroup')], 'receiverGroupHint'),
+      row('noblesLabel', [input('nobles', 4)], 'noblesHint'),
     ]);
   }
 
