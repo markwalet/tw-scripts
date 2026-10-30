@@ -13,14 +13,20 @@ import { fmt, hm, hms } from './plan-view.js';
  *   reserve: [number, number, number], wood, clay, iron kept in every sender
  *   keepMerchants: number,
  *   bufferPct: number,                 warehouse buffer (on top of the production margin)
+ *   senderGroup: number,               village group id, 0 = all
+ *   receiverGroup: number,
+ *   groups: Array<[number, string]>,   the player's groups (id, name) as last read from an overview
  * }} Settings
  */
 
 /** @returns {Settings} */
-const defaults = () => ({ maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2 });
+const defaults = () => ({ maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2, senderGroup: 0, receiverGroup: 0, groups: [] });
 
 /** A non-negative finite number, else the fallback. @param {unknown} v @param {number} fallback */
 const amount = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback);
+
+/** A village group id, 0 (all) when not one. @param {any} v @returns {number} */
+const groupId = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
 
 /**
  * Any stored (or imported) object -> valid v1 settings: valid fields are kept, broken or
@@ -38,6 +44,9 @@ function migrate(raw, base) {
     reserve: /** @type {Settings['reserve']} */ (base.reserve.map((d, k) => Math.floor(amount(reserve[k], d)))),
     keepMerchants: Math.floor(amount(raw.keepMerchants, base.keepMerchants)),
     bufferPct: amount(raw.bufferPct, base.bufferPct),
+    senderGroup: groupId(raw.senderGroup),
+    receiverGroup: groupId(raw.receiverGroup),
+    groups: Array.isArray(raw.groups) ? raw.groups.filter((g) => groupId(g?.[0]) && typeof g[1] == 'string') : [],
   };
 }
 
@@ -54,7 +63,7 @@ export const solverOptions = (s) => ({
   bufferPct: s.bufferPct,
 });
 
-/** @typedef {{ maxTravel: string, wood: string, stone: string, iron: string, keepMerchants: string, bufferPct: string }} FormFields */
+/** @typedef {{ maxTravel: string, wood: string, stone: string, iron: string, keepMerchants: string, bufferPct: string, senderGroup: string, receiverGroup: string }} FormFields */
 
 /** "3:00" -> 10800 s; "" -> null; h, h:mm or h:mm:ss; anything else -> undefined. @param {string} v */
 function parseDuration(v) {
@@ -98,7 +107,7 @@ export function readForm(f, current) {
   const keepMerchants = take('keepMerchants', parseCount(f.keepMerchants.trim()), current.keepMerchants);
   const bufferPct = take('bufferPct', parsePct(f.bufferPct.trim()), current.bufferPct);
   return {
-    settings: { ...current, maxTravelSeconds, reserve: /** @type {Settings['reserve']} */ (reserve), keepMerchants, bufferPct },
+    settings: { ...current, maxTravelSeconds, reserve: /** @type {Settings['reserve']} */ (reserve), keepMerchants, bufferPct, senderGroup: +f.senderGroup || 0, receiverGroup: +f.receiverGroup || 0 },
     invalid,
   };
 }
@@ -114,11 +123,16 @@ export const formFields = (s) => ({
   iron: String(s.reserve[2]),
   keepMerchants: String(s.keepMerchants),
   bufferPct: String(s.bufferPct),
+  senderGroup: String(s.senderGroup),
+  receiverGroup: String(s.receiverGroup),
 });
 
+/** A group's name for the collapsed line ("All", or "#id" once it is gone). @param {Settings} s @param {number} id @param {(key: string) => string} t */
+export const groupName = (s, id, t) => (id ? s.groups.find((g) => g[0] === id)?.[1] ?? `#${id}` : t('allGroups'));
+
 /**
- * The collapsed settings line: "Max 3:00 · reserve 0/0/0 · keep 0 merchants · buffer 2%".
- * Room for the group filters (#10) and the noble target (#11).
+ * The collapsed settings line: "Max 3:00 · reserve 0/0/0 · keep 0 merchants · buffer 2% · All → All".
+ * Room for the noble target (#11).
  * @param {Settings} s @param {(key: string) => string} t
  */
 export function settingsLine(s, t) {
@@ -128,5 +142,6 @@ export function settingsLine(s, t) {
     fill(t('settingReserve'), { wood, stone, iron }),
     s.keepMerchants === 1 ? t('settingKeepOne') : fill(t('settingKeep'), { n: fmt(s.keepMerchants) }),
     fill(t('settingBuffer'), { pct: s.bufferPct }),
+    `${groupName(s, s.senderGroup, t)} → ${groupName(s, s.receiverGroup, t)}`,
   ].join(' · ');
 }

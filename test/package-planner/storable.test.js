@@ -57,3 +57,9 @@ test('checkPreconditions: coin world is refused', () => {
 test('checkPreconditions: unknown world type proceeds (the config warning is shown)', () => {
   assert.deepEqual(checkPreconditions({ premium: true, gold: null }), { ok: true });
 });
+
+test('storableNow: with a receiver group only its academies count', () => {
+  const villages = [village(1, 60000, 95000, 80000), village(2, 28000, 30000, 25000)];
+  const levels = new Map([[1, 1], [2, 1]]);
+  assert.deepEqual(storableNow(villages, levels, COST, new Set([2])), { packages: 1, academies: 1, villages: 2, notInBuildings: 0 });
+});

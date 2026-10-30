@@ -10,10 +10,12 @@
  *   villages: ProdVillage[],
  *   academyLevels: Map<number, number>,   village id -> academy level (Buildings overview)
  *   incoming?: Map<number, [number, number, number]>,  village id -> resources on the way (Trader overview)
+ *   senders?: Set<number> | null,       sender group members (null = all)
+ *   receivers?: Set<number> | null,     receiver group members (null = all)
  *   config: { packageCost: { wood: number, stone: number, iron: number }, speed: number | null },
  * }} input
  */
-export function solverInput({ villages, academyLevels, incoming, config }) {
+export function solverInput({ villages, academyLevels, incoming, senders, receivers, config }) {
   /** @type {string[]} */
   const warnings = [];
   const speed = config.speed && config.speed > 0 ? config.speed : null;
@@ -28,7 +30,8 @@ export function solverInput({ villages, academyLevels, incoming, config }) {
         res: [v.wood, v.stone, v.iron],
         storage: v.storageMax,
         merchants: v.merchantsAvailable,
-        academy: (academyLevels.get(v.id) ?? 0) >= 1,
+        academy: (academyLevels.get(v.id) ?? 0) >= 1 && (!receivers || receivers.has(v.id)),
+        ...(senders ? { sender: senders.has(v.id) } : {}),
         // On the way = already there (the solver caps it by the warehouse), spec §4.
         ...(incoming?.has(v.id) ? { inflight: incoming.get(v.id) } : {}),
       })),
