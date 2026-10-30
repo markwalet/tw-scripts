@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "module": "esnext",
+    "target": "es2020",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "paths": {
+      "@renderer": ["./src/ui/renderers/modern.js"]
+    }
+  },
+  "include": ["src/**/*.js", "test/**/*.js"],
+  "exclude": ["node_modules", "dist", "game.js", "off-pack.js", "timetool.js"]
+}
