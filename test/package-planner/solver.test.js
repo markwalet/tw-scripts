@@ -55,6 +55,64 @@ test('the noble target caps the packages', () => {
   assert.equal(solveValid(world, { maxPackages: 2 }).packages, 2);
 });
 
+// Real Request-resources page (enc1, world speed 3.6): source offset |dx|,|dy| from the
+// target -> the game's "Duration" in seconds. Merchants: 6 min/field ÷ world speed.
+const MARKET_PAGE_DURATIONS = [
+  [1, 0, 100], [1, 1, 141], [2, 0, 200], [2, 1, 224], [2, 2, 283], [3, 1, 316], [3, 2, 361],
+  [4, 1, 412], [4, 2, 447], [5, 0, 500], [4, 3, 500], [5, 1, 510], [5, 2, 539], [5, 3, 583],
+  [6, 0, 600], [6, 1, 608], [6, 2, 632], [5, 4, 640], [6, 3, 671], [7, 0, 700], [7, 1, 707],
+  [7, 2, 728], [7, 3, 762], [8, 0, 800], [8, 1, 806], [7, 4, 806], [8, 2, 825], [9, 1, 906],
+  [7, 6, 922], [8, 5, 943], [10, 1, 1005], [10, 2, 1020], [10, 4, 1077], [11, 0, 1100],
+  [11, 2, 1118], [11, 3, 1140], [11, 4, 1170], [12, 1, 1204], [11, 5, 1208], [12, 2, 1217],
+  [12, 3, 1237], [12, 4, 1265], [12, 5, 1300], [13, 3, 1334], [13, 4, 1360], [13, 5, 1393],
+];
+
+test('travel time matches the market page for the world speed', () => {
+  for (const [dx, dy, seconds] of MARKET_PAGE_DURATIONS) {
+    const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 500 + dx, 500 + dy, [28000, 30000, 25000])] };
+    const plan = solveValid(world, { worldSpeed: 3.6 });
+    assert.equal(plan.transports[0]?.seconds, seconds, `offset ${dx}|${dy}`);
+  }
+});
+
+test('max travel time is a hard limit', () => {
+  // The only source is 5 fields away: 1800 s at speed 1.
+  const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000])] };
+  assert.equal(solveValid(world, { maxTravelSeconds: 1800 }).packages, 1);
+  assert.equal(solveValid(world, { maxTravelSeconds: 1799 }).packages, 0);
+  assert.equal(solveValid(world, { worldSpeed: 2, maxTravelSeconds: 900 }).packages, 1);
+});
+
+test('sources are emptied down to the reserve, never below', () => {
+  const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [40000, 40000, 40000])] };
+  assert.equal(solveValid(world, { reserve: [12000, 10000, 15000] }).packages, 1);
+  assert.equal(solveValid(world, { reserve: [12001, 0, 0] }).packages, 0);
+});
+
+test('merchants bound what a source ships; kept-home merchants never leave', () => {
+  // One package needs 83 merchants from a single source.
+  const world = (m) => ({ villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000], m)] });
+  assert.equal(solveValid(world(83)).packages, 1);
+  assert.equal(solveValid(world(82)).packages, 0);
+  assert.equal(solveValid(world(100), { keepMerchants: 17 }).packages, 1);
+  assert.equal(solveValid(world(100), { keepMerchants: 18 }).packages, 0);
+});
+
+test('several packages per academy, bounded by its warehouse minus the buffer', () => {
+  // 100k warehouse, 2% buffer: 98k room -> 3 packages of 30k clay, not 4.
+  const world = {
+    villages: [academy(1, 500, 500, [0, 0, 0], 0, { storage: 100000 }), village(2, 503, 504, [400000, 400000, 400000], 1000)],
+  };
+  assert.equal(solveValid(world).packages, 3);
+  assert.equal(solveValid(world, { cost: [24000, 24500, 24000] }).packages, 4);
+  assert.equal(solveValid(world, { cost: [24000, 24500, 24000], bufferPct: 2.1 }).packages, 3);
+});
+
+test('villages outside the sender group never send', () => {
+  const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000], 100, { sender: false })] };
+  assert.equal(solveValid(world).packages, 0);
+});
+
 test('tiny random worlds: package count equals the brute-force optimum', () => {
   let notCheapest = 0;
   for (let seed = 1; seed <= 400; seed++) {

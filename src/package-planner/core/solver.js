@@ -54,7 +54,9 @@ export const DEFAULTS = Object.freeze({
   /** @type {Res} */ reserve: [0, 0, 0],
   keepMerchants: 0,
   maxTravelSeconds: Infinity,
-  secondsPerField: 360,
+  /** World speed (`speed` in the world config). Merchants walk 6 min per field ÷ this,
+   *  rounded to the second (checked against the market page); unit_speed doesn't apply. */
+  worldSpeed: 1,
   bufferPct: 2,
   /** Noble target: stop at this many packages. */
   maxPackages: Infinity,
@@ -114,7 +116,7 @@ function buildModel(/** @type {{ villages: Village[] }} */ world, /** @type {typ
     for (let a = 0; a < academies.length; a++) {
       if (academies[a] === v) continue;
       const d = Math.hypot(v.x - academies[a].x, v.y - academies[a].y);
-      const seconds = Math.round(d * o.secondsPerField);
+      const seconds = Math.round((d * 360) / o.worldSpeed);
       if (seconds <= o.maxTravelSeconds) near.push({ s, a, d, seconds });
     }
     near.sort((p, q) => p.d - q.d);
