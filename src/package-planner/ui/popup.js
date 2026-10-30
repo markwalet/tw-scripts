@@ -5,7 +5,7 @@
 
 import { h, injectStyle } from '../../shared/dom.js';
 import { fill } from '../core/i18n.js';
-import { hm, hms } from '../core/plan-view.js';
+import { fmt, hm, hms } from '../core/plan-view.js';
 
 const CSS = `
 .pp-root{font:12px/1.4 Verdana,Arial,sans-serif;color:#000;width:min(560px,calc(100vw - 40px));box-sizing:border-box}
@@ -30,8 +30,6 @@ const CSS = `
 .pp-root.pp-mobile{width:100%}
 `;
 
-/** "33140" -> "33.140", the way TW prints numbers. @param {number} n */
-const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
 /** @typedef {import('../core/plan-view.js').Card} Card */
 /** @typedef {ReturnType<typeof import('../core/plan-view.js').planView>} PlanView */

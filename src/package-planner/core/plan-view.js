@@ -21,6 +21,9 @@ export const hms = (s) => `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60
 /** Seconds -> "h:mm" (seconds cut off, so it reads like the game's h:mm:ss). @param {number} s */
 export const hm = (s) => hms(s).slice(0, -3);
 
+/** "33140" -> "33.140", the way TW prints numbers. @param {number} n */
+export const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
 /**
  * @param {Plan} plan
  * @param {Map<number, Place>} places  village id -> name + coords
