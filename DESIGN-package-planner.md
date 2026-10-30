@@ -32,7 +32,7 @@ timetool2 and shares its adapter/core/ui conventions (see `CLAUDE.md`, `DESIGN.m
 5. Click each row's Send button, or hold **Enter** (desktop).
 6. The player goes to Academy › Store when resources have arrived and mass-stores.
 
-**Popup layout** (picked from the prototype, variant B; `src/package-planner/ui/popup.prototype.js`):
+**Popup layout** (picked from the prototype, variant B; the prototype was removed in #13):
 - ~560 px wide on desktop, full width on mobile.
 - Settings collapsed into one line (`⚙ Max 3:00 · reserve 0/0/0 · keep 0 merchants · All → All`)
   with an *edit* link that unfolds the settings table; a full-width Calculate button.

@@ -1,4 +1,4 @@
-// package-planner/ui/popup.js — the planner popup (layout B of the prototype, native TW
+// package-planner/ui/popup.js — the planner popup (spec §1 layout B, native TW
 // look). The dialog is shown ONCE; every render() replaces the contents of one host
 // element (re-calling Dialog.show closes and fades the dialog in again, which is slow).
 // TW-specific calls (showing the dialog) come in through `deps`, from the adapter.
