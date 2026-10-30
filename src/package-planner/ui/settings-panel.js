@@ -2,7 +2,8 @@
 // DESIGN-package-planner.md §1/§6): one collapsed line with an *edit* link that unfolds the
 // settings table. Every change is parsed and saved at once (per world, via `save`); the
 // next Calculate uses it. Inputs are never rebuilt while typing (that would drop focus):
-// a change only updates the line and marks invalid fields.
+// a change only updates the line and marks invalid fields, and popup renders reuse the
+// open panel element.
 
 import { h, injectStyle } from '../../shared/dom.js';
 import { formFields, readForm, settingsLine } from '../core/settings.js';
@@ -84,14 +85,20 @@ export function createSettingsPanel({ t, get, save }) {
   }
 
   return {
-    /** The panel for a fresh popup render. */
+    /**
+     * The panel, for a popup render. While the table is open it is the same element (its
+     * inputs keep focus and typed text); folded, the line is rebuilt (settings may have
+     * changed, e.g. the group list after a Calculate).
+     */
     element() {
-      node = build();
-      return node;
+      if (!node || !open) rebuild();
+      return /** @type {HTMLElement} */ (node);
     },
     /** Fold the table back into the line (on Calculate). */
     close() {
+      if (!open) return;
       open = false;
+      rebuild();
     },
   };
 }

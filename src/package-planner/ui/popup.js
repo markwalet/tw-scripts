@@ -85,7 +85,8 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   // Sending state of the current plan; replaced whenever a new view arrives (or the list
   // switches to the fallback), so answers to requests of an old list are ignored.
   // rows: null = one card per target (Request resources), else the fallback list.
-  /** @returns {{ rows: Row[] | null, status: Map<number | string, 'sent' | 'failed'>, failure: Outcome | null, locked: boolean }} */
+  // status: 'pending' = clicked, no answer yet; 'sent' = the game confirmed it.
+  /** @returns {{ rows: Row[] | null, status: Map<number | string, 'pending' | 'sent' | 'failed'>, failure: Outcome | null, locked: boolean }} */
   const fresh = () => ({ rows: null, status: new Map(), failure: null, locked: false });
   let send = fresh();
   let focusNext = false;
@@ -102,12 +103,16 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     if (send.locked || send.failure || send.status.has(key)) return;
     const s = send;
     s.locked = true;
-    s.status.set(key, 'sent');
+    s.status.set(key, 'pending');
     run().then((o) => {
       if (s !== send) return;
-      if (o.ok) { if (o.message) toast(o.message); return; }
-      s.status.set(key, 'failed');
-      s.failure ??= o;
+      if (o.ok) {
+        s.status.set(key, 'sent');
+        if (o.message) toast(o.message);
+      } else {
+        s.status.set(key, 'failed');
+        s.failure ??= o;
+      }
       render(view);
     });
     render(view);
@@ -122,7 +127,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   /** Card/row button: send while pending, else a greyed label. @param {number | string} key @param {string} label @param {() => void} onClick */
   function sendButton(key, label, onClick) {
     const st = send.status.get(key);
-    if (st || send.failure) return h('button', { className: 'btn', type: 'button', disabled: 'disabled', text: t(st === 'sent' ? 'sent' : st ? 'sendFailed' : 'notSent') });
+    if (st || send.failure) return h('button', { className: 'btn', type: 'button', disabled: 'disabled', text: t(st === 'failed' ? 'sendFailed' : st || 'notSent') });
     const b = h('button', { className: 'btn pp-send', type: 'button', disabled: send.locked ? 'disabled' : null, text: label, on: { click: onClick } });
     firstSend ??= b;
     return b;
@@ -132,8 +137,15 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   const pendingFirst = (items, key) => [...items.filter((x) => !send.status.has(key(x))), ...items.filter((x) => send.status.has(key(x)))];
   const greyed = (/** @type {number | string} */ key) => (send.status.has(key) || send.failure ? 'pp-card pp-done' : 'pp-card');
 
+  /** Requests still waiting for the game's answer. */
+  const pendingCount = () => [...send.status.values()].filter((s) => s === 'pending').length;
+
+  /**
+   * Switch to one transport per click, for every target the game did not confirm (failed
+   * ones included). Only once every request answered: a pending one may still succeed.
+   */
   function useFallback() {
-    if (view.status !== 'done') return;
+    if (view.status !== 'done' || pendingCount()) return;
     const sent = new Set([...send.status].filter(([, s]) => s === 'sent').map(([k]) => Number(k)));
     const rows = fallbackRows(view.transports, view.plan.cards.map((c) => c.id), sent, view.places);
     send = { ...fresh(), rows };
@@ -144,7 +156,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   /** @param {Row} r */
   function row(r) {
     const { t: tr, from, to } = r;
-    return h('div', { className: greyed(r.key) }, [
+    return h('div', { className: greyed(r.key), 'data-to': r.to.id }, [
       h('div', {}, [h('b', { text: from.name }), ` (${from.x}|${from.y}) → `, h('b', { text: to.name }), ` (${to.x}|${to.y})`]),
       sendButton(r.key, t('send'), () => click(r.key, () => post('map_send', tr.from, transportPayload(tr)))),
       h('div', { className: 'pp-muted' }, [
@@ -159,10 +171,14 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     if (!f || f.ok) return null;
     const text = f.reason === 'game' ? fill(t('failGame'), { message: f.message })
       : t(f.reason === 'botProtect' ? 'failBotProtect' : f.reason === 'timeout' ? 'failTimeout' : 'failUnavailable');
+    const open = pendingCount();
     return h('div', { className: 'pp-error' }, [
       text,
       f.reason === 'game' && !send.rows
-        ? h('div', { className: 'pp-actions' }, [h('button', { className: 'btn pp-fallback', type: 'button', text: t('fallback'), on: { click: useFallback } })])
+        ? h('div', { className: 'pp-actions' }, [
+          open ? h('span', { className: 'pp-muted', text: plural(t, 'waitingAnswers', open) }) : null,
+          h('button', { className: 'btn pp-fallback', type: 'button', disabled: open ? 'disabled' : null, text: t('fallback'), on: { click: useFallback } }),
+        ])
         : null,
     ]);
   }
@@ -267,6 +283,12 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     ]);
   }
 
+  // The settings panel sits in its own slot that renders leave alone (an open settings
+  // table keeps its inputs, focus and typed text); everything below it is rebuilt.
+  const settingsSlot = h('div');
+  const main = h('div');
+  host.appendChild(h('div', { className: mobile ? 'pp-root pp-mobile' : 'pp-root' }, [h('h3', { text: t('scriptName') }), settingsSlot, main]));
+
   /** @param {View} next */
   function render(next) {
     if (next !== view) {
@@ -275,9 +297,14 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     }
     view = next;
     firstSend = null;
-    const root = h('div', { className: mobile ? 'pp-root pp-mobile' : 'pp-root' }, [
-      h('h3', { text: t('scriptName') }),
-      configurable() ? settingsPanel.element() : null,
+    const active = document.activeElement;
+    // Focus may move to the next send button only from a send button or from nothing
+    // (never out of a settings field the user is typing in).
+    const focusFree = !active || active === document.body || (main.contains(active) && active.classList.contains('pp-send'));
+    const panel = configurable() ? settingsPanel.element() : null;
+    if (!panel) settingsSlot.replaceChildren();
+    else if (settingsSlot.firstChild !== panel) settingsSlot.replaceChildren(panel);
+    main.replaceChildren(...[
       calculateButton(),
       ...body().filter(Boolean),
       h('div', { className: 'pp-actions' }, [
@@ -286,14 +313,16 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
       debugOpen ? h('p', { className: 'pp-muted', text: t('copyManual') }) : null,
       debugOpen ? h('textarea', { readonly: 'readonly', text: debugText() }) : null,
     ].filter(Boolean));
-    host.replaceChildren(root);
     if (!shown) {
       shown = true; // once: if the user closes it, later renders just update a detached host
       show('package_planner', host, () => {});
     }
-    if (focusNext && firstSend && !mobile) { // mobile: tap only, no Enter-hold
+    // An answer re-renders the list: a focused send button keeps focus on the first one
+    // (holding Enter keeps walking down the list).
+    const lostSendFocus = focusFree && active !== document.activeElement && !!active?.classList?.contains('pp-send');
+    if (focusNext || lostSendFocus) {
       focusNext = false;
-      firstSend.focus();
+      if (focusFree && firstSend && !mobile) firstSend.focus(); // mobile: tap only, no Enter-hold
     }
   }
 
