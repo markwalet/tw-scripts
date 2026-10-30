@@ -75,12 +75,13 @@ src/
     bootstrap.js           register, preconditions, open popup
     adapter/tw.js          ONLY place touching TW globals, TW DOM/HTML, endpoints
     core/                  PURE, unit-tested:
-      model.js             village/academy/transport types
-      solver.js            the optimiser (§5)
-      rounding.js          whole-merchant rounding
+      model.js             overviews + world config -> solver input
+      solver.js            the optimiser (§5), including the whole-merchant rounding
+                           (it is part of the discretised model, so it stays inside)
+      plan-view.js         plan -> summary line + one card per target, h:mm
       nobles.js            "X nobles -> packages" math
       parse-*.js           HTML -> data parsers (fixtures in test/)
-    ui/popup.js            settings form + summary + send list (native look)
+    ui/popup.js            settings form + summary + cards (native look)
 ```
 
 - `Dialog.show(id, content)` only accepts a **string, a jQuery object or a 1-arg
@@ -186,7 +187,13 @@ closed). Details that were measured:
   nothing and cost ~1 s, so it's off there.
 - Pruning: each source ships to its K = 20 nearest academies (within max travel). K = 12
   lost up to 1% packages on half-full 500/120 worlds; "K per source ∪ M per academy" lost
-  more, so it was dropped.
+  more, so it was dropped. **Not on small worlds** (#5): when sources × academies ≤ 10,000,
+  every pair is kept. The user's real account (63 of 65 villages have an academy, most
+  holding nearly one package) got 58 packages with K = 20 and 72 with every pair (whole-load
+  bound 73), in ~90 ms. Fixture: `test/package-planner/fixtures/academy-heavy.js`. Large
+  academy-heavy accounts still prune at K = 20; that gap is unmeasured.
+- Travel time: `round(distance × 360 / speed)` s, `speed` from the world config, no
+  `unit_speed` (matches all 64 rows of the real Request-resources page, enc1 speed 3.6).
 
 **Results** (Apple M4 Pro, Node 24; fixtures in `test/package-planner/fixtures/`, bench:
 `node test/package-planner/solver.bench.js`):
@@ -275,7 +282,8 @@ validate what can't be checked offline. Other work carries on; results come back
 
 - Response shape of `call` / `map_send` (handle defensively; `game_data` merge happens
   in TW's `handleResponse`).
-- Merchant travel speed (compare our times with the market page's own times).
+- Merchant travel speed: formula checked on a saved Request-resources page (§5); still to
+  compare the plan's times on a live page (test checkpoint 2).
 - Merchant capacity on the player's world (1000?).
 - Whether `call` needs the `select-village` / `target_id: 0` fields Shinko sends.
 - DOM/table structure of the three overview pages (save as test fixtures).

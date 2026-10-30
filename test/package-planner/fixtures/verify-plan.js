@@ -34,7 +34,7 @@ export function verifyPlan(world, options, plan) {
     const total = t.res[0] + t.res[1] + t.res[2];
     if (total === 0) errors.push(`transport ${t.from}->${t.to}: empty`);
     if (t.merchants !== Math.ceil(total / cap)) errors.push(`transport ${t.from}->${t.to}: ${t.merchants} merchants for ${total}`);
-    const seconds = Math.round(dist(from, to) * o.secondsPerField);
+    const seconds = Math.round((dist(from, to) * 360) / o.worldSpeed);
     if (Math.abs(t.seconds - seconds) > 1) errors.push(`transport ${t.from}->${t.to}: travel ${t.seconds}s, expected ${seconds}s`);
     if (seconds > o.maxTravelSeconds) errors.push(`transport ${t.from}->${t.to}: ${seconds}s exceeds max travel`);
     add(out, t.from, t.res);

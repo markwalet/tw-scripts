@@ -15,7 +15,7 @@ import { headerColumns, headerVillageCount, pageNumbers, rowShape } from './over
 
 /**
  * @typedef {{
- *   id: number, x: number, y: number,
+ *   id: number, name: string, x: number, y: number,
  *   wood: number, stone: number, iron: number,
  *   storageMax: number, merchantsAvailable: number, merchantsTotal: number,
  * }} ProdVillage
@@ -49,6 +49,8 @@ export function parseProd(html) {
     const id = intOf(find(tr, (e) => hasClass(e, 'quickedit-vn'))?.attrs['data-id'] || '');
     const label = find(tr, (e) => hasClass(e, 'quickedit-label')) || tr;
     const coords = [...textOf(label).matchAll(/\((\d{1,3})\|(\d{1,3})\)/g)].pop();
+    // The label's data-text is the bare name; its text adds "(x|y) K55".
+    const name = (label.attrs['data-text'] ?? textOf(label).replace(/\s*\(\d{1,3}\|\d{1,3}\)[^(]*$/, '')).trim();
 
     /** @type {Record<string, number>} */
     const res = {};
@@ -73,6 +75,7 @@ export function parseProd(html) {
 
     const v = {
       id,
+      name,
       x: coords ? parseInt(coords[1], 10) : NaN,
       y: coords ? parseInt(coords[2], 10) : NaN,
       wood: res.wood,
@@ -82,7 +85,7 @@ export function parseProd(html) {
       merchantsAvailable: merchants ? parseInt(merchants[1], 10) : NaN,
       merchantsTotal: merchants ? parseInt(merchants[2], 10) : NaN,
     };
-    if (Object.values(v).some((n) => !Number.isFinite(n))) {
+    if (Object.entries(v).some(([k, n]) => k !== 'name' && !Number.isFinite(n))) {
       skipped += 1;
       continue;
     }

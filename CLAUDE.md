@@ -52,12 +52,15 @@ src/
     html.js        parseHtml() -> light element tree + find/findAll/textOf/intOf. Pure (no
                    DOM), so page parsers unit-test in Node against saved pages
   package-planner/ the Noble Package Planner (entry -> dist/package-planner.js)
-    bootstrap.js   entry: register, popup, preconditions, config + overviews -> result
+    bootstrap.js   entry: register, popup, preconditions; Calculate: overviews -> solve
+                   (after a paint) -> cards
     adapter/tw.js  the planner's ONLY TW-globals/DOM/endpoint module (own `w` cast):
                    env, throttled fetchText, overview/config URLs, Dialog.show($(host))
     core/          PURE: parse-prod / parse-buildings / world-config parsers, overview.js
                    (header `order=` keys, paging), load-overview (page=-1 then paged),
-                   storable, preconditions, debug-info (whitelisted, scrubbed), i18n
+                   storable, preconditions, debug-info (whitelisted, scrubbed), i18n,
+                   solver (§5, incl. merchant rounding), model (overviews -> solver
+                   input), plan-view (plan -> summary + cards, h:mm)
     ui/popup.js    layout B; Dialog shown once, renders swap the host's children
   test/fixtures/package-planner/  trimmed, anonymised slices of the user's real enc1
                    pages (prod, buildings) + real public world configs (classic, coin)

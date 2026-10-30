@@ -29,6 +29,7 @@ function overviewLine(label, s) {
  *   prod?: { byId: Map<number, any>, warnings: string[], structure: any } | null,
  *   buildings?: { byId: Map<number, number>, warnings: string[], structure: any } | null,
  *   result?: { packages: number, academies: number, villages: number, notInBuildings: number } | null,
+ *   plan?: { packages: number, cards: number, transports: number, merchants: number, longestSeconds: number, ms: number } | null,
  *   refused?: string | null,
  *   error?: string | null,
  * }} r
@@ -55,6 +56,10 @@ export function buildDebugInfo(r) {
   if (r.result) {
     const x = r.result;
     lines.push(`storable now: ${x.packages} packages in ${x.academies} academies (${x.villages} villages, ${x.notInBuildings} missing from buildings)`);
+  }
+  if (r.plan) {
+    const p = r.plan;
+    lines.push(`plan: ${p.packages} packages, ${p.cards} targets, ${p.transports} transports, ${p.merchants} merchants, longest ${p.longestSeconds} s, solved in ${p.ms} ms`);
   }
   const warnings = [...(r.config?.warnings || []), ...(r.prod?.warnings || []), ...(r.buildings?.warnings || [])];
   lines.push(warnings.length ? `warnings:\n- ${warnings.map(scrub).join('\n- ')}` : 'warnings: none');

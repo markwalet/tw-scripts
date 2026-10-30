@@ -34,7 +34,7 @@ export function bruteForce(world, options = {}) {
     for (const a of acad) {
       if (a === v) continue;
       const d = dist(v, a);
-      const seconds = Math.round(d * o.secondsPerField);
+      const seconds = Math.round((d * 360) / o.worldSpeed);
       if (seconds <= o.maxTravelSeconds) edges.push({ v, a, d, seconds });
     }
   }

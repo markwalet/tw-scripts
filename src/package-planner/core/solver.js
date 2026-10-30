@@ -54,12 +54,17 @@ export const DEFAULTS = Object.freeze({
   /** @type {Res} */ reserve: [0, 0, 0],
   keepMerchants: 0,
   maxTravelSeconds: Infinity,
-  secondsPerField: 360,
+  /** World speed (`speed` in the world config). Merchants walk 6 min per field ÷ this,
+   *  rounded to the second (checked against the market page); unit_speed doesn't apply. */
+  worldSpeed: 1,
   bufferPct: 2,
   /** Noble target: stop at this many packages. */
   maxPackages: Infinity,
-  /** Prune: each source only ships to its K nearest academies. */
+  /** Prune: each source only ships to its K nearest academies… */
   nearestAcademies: 20,
+  /** …unless sources × academies is at most this: then every pair is kept. On an account
+   *  where nearly every village has an academy, K = 20 lost 14 of 72 packages. */
+  allPairsUpTo: 10000,
   /** Greedy keeps a package costing up to this much more than the next-best estimate
    *  (saves re-evaluating stale estimates; 0 = strict cheapest-first). */
   greedyTolerance: 0.3,
@@ -105,20 +110,21 @@ function buildModel(/** @type {{ villages: Village[] }} */ world, /** @type {typ
   const senders = villages.filter((v) => v.sender !== false && v.merchants - o.keepMerchants > 0);
   const aIndex = new Map(academies.map((a, i) => [a, i]));
 
-  // Candidate edges: within max travel, K nearest academies per source.
+  // Candidate edges: within max travel, K nearest academies per source (all on small worlds).
   /** @type {{ s: number, a: number, d: number, seconds: number }[]} */
   const edges = [];
+  const K = senders.length * academies.length <= o.allPairsUpTo ? Infinity : o.nearestAcademies;
   const longest = new Array(academies.length).fill(0);
   senders.forEach((v, s) => {
     const near = [];
     for (let a = 0; a < academies.length; a++) {
       if (academies[a] === v) continue;
       const d = Math.hypot(v.x - academies[a].x, v.y - academies[a].y);
-      const seconds = Math.round(d * o.secondsPerField);
+      const seconds = Math.round((d * 360) / o.worldSpeed);
       if (seconds <= o.maxTravelSeconds) near.push({ s, a, d, seconds });
     }
     near.sort((p, q) => p.d - q.d);
-    for (const e of near.slice(0, o.nearestAcademies)) {
+    for (const e of near.slice(0, K)) {
       edges.push(e);
       longest[e.a] = Math.max(longest[e.a], e.seconds);
     }
