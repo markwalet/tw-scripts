@@ -130,7 +130,10 @@ export function parseHtml(src) {
     const el = { tag, attrs, children: [], parent: top() };
     top().children.push(el);
     if (RAW.has(tag)) {
-      const close = src.toLowerCase().indexOf(`</${tag}`, i);
+      // Case-insensitive search from i (no lowercased copy of the whole page per tag).
+      const closeRe = new RegExp(`</${tag}`, 'gi');
+      closeRe.lastIndex = i;
+      const close = closeRe.exec(src)?.index ?? -1;
       const end = close < 0 ? n : close;
       if (end > i) el.children.push({ tag: '#text', text: src.slice(i, end), parent: el });
       const gt = close < 0 ? n : src.indexOf('>', close);
