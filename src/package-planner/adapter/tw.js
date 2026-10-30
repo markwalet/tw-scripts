@@ -7,6 +7,7 @@
 const w = /** @type {any} */ (window);
 
 import { createQueue } from '../../shared/queue.js';
+import { outcome } from '../core/send.js';
 
 /** Register with TW's ScriptAPI (guarded no-op if unavailable). */
 export function register(name, version, author, email) {
@@ -47,6 +48,27 @@ export function fetchText(url) {
       return res.text();
     }),
   );
+}
+
+/**
+ * POST one market action through TW's own request helper (adds the csrf token, `&t=` when
+ * sitting, and shows the game's error/captcha). Resolves once with how it ended; never
+ * rejects, so the queue never retries. TW calls no callback on HTTP 429/503: a watchdog
+ * turns "no answer" into a failure.
+ * @param {'call' | 'map_send'} action
+ * @param {number} village  target for 'call', source for 'map_send'
+ * @param {Record<string, number>} data
+ * @returns {Promise<import('../core/send.js').Outcome>}
+ */
+export function postMarket(action, village, data, timeoutMs = 10000) {
+  return queue.add(() => new Promise((resolve) => {
+    let timer = 0;
+    const end = (/** @type {Parameters<typeof outcome>} */ ...r) => { clearTimeout(timer); resolve(outcome(...r)); };
+    if (!w.TribalWars || typeof w.TribalWars.post !== 'function') return end('unavailable');
+    timer = setTimeout(() => end('timeout'), timeoutMs);
+    w.TribalWars.post('market', { ajaxaction: action, village }, data,
+      (/** @type {unknown} */ r) => end('success', r), (/** @type {unknown} */ e) => end('error', e));
+  }));
 }
 
 /**

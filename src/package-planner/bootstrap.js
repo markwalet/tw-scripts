@@ -37,6 +37,7 @@ const popup = createPopup({
   debugText: () => buildDebugInfo(report),
   toast: tw.toast,
   onCalculate: () => { calculate(); },
+  post: tw.postMarket,
 });
 
 /** @param {unknown} err */
@@ -119,6 +120,8 @@ async function calculate() {
       detail: { merchants: plan.merchants, academies: storable.academies, villages: villages.length },
       stored: null, // packages already stored: read from the academy page with the noble target (#10)
       warnings,
+      transports: plan.transports,
+      places: prod.byId,
     });
   } catch (err) {
     fail(err);

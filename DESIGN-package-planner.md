@@ -248,6 +248,12 @@ Export/import and schema migration follow timetool2's `settings.js`.
   holding Enter moves down the list (the approved-scripts pattern). Sent rows are marked
   done. Failure: see §1.
 - Never one request per merchant; a row carries all three resources and N merchants.
+- Implemented (#6, `core/send.js` + `ui/popup.js`): `call` body is `target_id: 0` +
+  `resource[src][wood|stone|iron]` for every source (zeros included). Outcomes: success
+  (toast `response.success ?? .message`), game error (message; offers the fallback list),
+  bot protection (`onError()` without argument), no answer within 10 s (TW calls no
+  callback on 429/503). Any failure greys out the rest. Smoke test:
+  `node test/package-planner/send.smoke.mjs` (headless Chrome, stubbed `TribalWars.post`).
 
 ## 8. Out of scope
 
