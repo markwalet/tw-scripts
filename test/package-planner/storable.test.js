@@ -58,6 +58,16 @@ test('checkPreconditions: unknown world type proceeds (the config warning is sho
   assert.deepEqual(checkPreconditions({ premium: true, gold: null }), { ok: true });
 });
 
+test('storableNow: what is already on the way counts (capped by the warehouse, like the solver)', () => {
+  const villages = [
+    village(1, 0, 30000, 25000), // + 28000 wood on the way -> 1
+    { ...village(2, 390000, 390000, 390000), storageMax: 400000 }, // + 50000 each: capped at 400000 -> 13 (not 14)
+  ];
+  const levels = new Map([[1, 1], [2, 1]]);
+  const incoming = new Map([[1, [28000, 0, 0]], [2, [50000, 50000, 50000]]]);
+  assert.equal(storableNow(villages, levels, COST, null, incoming).packages, 1 + 13);
+});
+
 test('storableNow: with a receiver group only its academies count', () => {
   const villages = [village(1, 60000, 95000, 80000), village(2, 28000, 30000, 25000)];
   const levels = new Map([[1, 1], [2, 1]]);

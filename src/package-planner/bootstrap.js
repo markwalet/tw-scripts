@@ -133,7 +133,7 @@ async function calculate() {
     const villages = [...prod.byId.values()];
     const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
     const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
-    const storable = storableNow(villages, academyLevels, config.packageCost, receivers);
+    const storable = storableNow(villages, academyLevels, config.packageCost, receivers, incoming.byId);
     report.result = storable;
 
     const warnings = [...config.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
