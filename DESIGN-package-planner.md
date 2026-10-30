@@ -149,17 +149,68 @@ Transports are rounded to whole merchant loads (1000s of combined resources). A 
 last merchant is only allowed when it completes a package. Rounding must never silently
 drop resources from the books (the bug in the current balancer, `calculateLaunches`).
 
-### Algorithm — to be settled by a spike
-The model above is the **correctness spec**. Which algorithm meets it is decided by a
-test-first spike, benchmarked on synthetic fixtures (~500 villages / ~120 academies,
-mobile CPU budget ≲ 1 s):
-- (a) greedy *cheapest next package* (repeatedly complete the package with the lowest
-  marginal resource-hours, given remaining merchants) + local improvement; or
-- (b) LP relaxation of the model via a small bundled solver + rounding.
+### Algorithm — decided by the spike (#3): (a) greedy on a min-cost flow
+The model above is the **correctness spec**. The spike (2026-10-30) compared (a) greedy
+*cheapest next package* + local improvement with (b) LP relaxation + rounding, test-first,
+on synthetic fixtures. **(a) wins**; (b) is not kept in the codebase.
 
-Acceptance: on small fixtures, the package count equals the brute-force/LP optimum. On
-large ones, within a stated tolerance and never worse than the current balancer on the
-same input. Prune candidate edges by max travel time and the K nearest academies.
+**Discretised model** (what the solver and the brute force both optimise). One *unit* = one
+merchant carrying `merchantCapacity` of one resource. A source ships whole units of what
+it holds above its reserve (a sub-1000 remainder per resource stays home; it is never
+planned, so never dropped from the books). An academy's deficit is rounded up to whole
+units, and the overshoot (< 1 unit per resource) is trimmed off its farthest delivery:
+the only partial merchant is the one that completes a package. Merchants reported per
+transport are `ceil(total / capacity)`, never more than the model counted. The reserve
+limits what leaves a village; an academy's own stock counts toward its own packages, and
+it exports only what its packages don't need. The warehouse rule uses the longest
+*candidate* trip into the academy (safe side; the actual longest arrival is shorter).
+
+**Algorithm** (`src/package-planner/core/solver.js`, `solve(world, options) → plan`).
+For a fixed package count per academy, routing is a min-cost flow
+`S →(merchants) V_v →(exportable) P_vk →(distance) D_ak (deficit)`. The greedy adds one
+package at a time to the academy whose next package is cheapest. It solves by successive
+shortest paths, with Dijkstra on reduced costs searching *backward* from the new demand,
+so each search stays local. Each addition re-routes earlier flow through the residual
+graph, so early choices never strand later packages (§9 nearest-first starvation). An
+academy whose next package is infeasible drops out for good (feasibility is downward
+closed). Details that were measured:
+- Lazy evaluation with a 30% tolerance and a cheap lower bound (one search per resource)
+  before re-trying a stale estimate. Strictly cheapest-first was 1.6–3.7× slower for <1%
+  better resource-hours.
+- When merchants ran out before the resources did, a second pass orders by merchant loads
+  first (a per-load penalty on the arc costs; for fixed packages this leaves the routing
+  unchanged) and keeps the better plan: +1–2% packages on merchant-scarce worlds.
+- Local search (take one package away, refill greedily), budget 150 tentative packages,
+  only on worlds with ≤ 40 academies. It brings tiny worlds to the brute-force optimum
+  and adds up to +9% packages on small merchant-scarce worlds. On 500/120 it gained
+  nothing and cost ~1 s, so it's off there.
+- Pruning: each source ships to its K = 20 nearest academies (within max travel). K = 12
+  lost up to 1% packages on half-full 500/120 worlds; "K per source ∪ M per academy" lost
+  more, so it was dropped.
+
+**Results** (Apple M4 Pro, Node 24; fixtures in `test/package-planner/fixtures/`, bench:
+`node test/package-planner/solver.bench.js`):
+
+| Check | (a) greedy + flow | (b) LP + rounding |
+|---|---|---|
+| Tiny worlds (3–6 villages, 1–3 academies) vs brute force, package count | 3000/3000 optimal | 998/1000 |
+| Same, resource-hours | 2999/3000 optimal, worst +5% | — |
+| 30–60 villages vs LP upper bound | = bound in 13/18; ≤ 2 below (≤ 2.6%), only when merchants bind | its own LP |
+| §9 failure fixtures (cluster border, average on full warehouses, nearest-first starvation, small sends dropped, remainder cut) | all optimal | — |
+| 100 villages / 25 academies | 30–180 ms | dense simplex: 29 s |
+| 500 / 120, typical (half-full or full warehouses, max travel set) | 12–610 ms, = upper bound when it's reachable | dense tableau ~2,400 × 30,000 (≈ 580 MB): not feasible |
+| 500 / 120, scarce (nearly empty warehouses, or 0–40 merchants) | 0.9–1.6 s | — |
+| 800 / 200 | 0.2–0.8 s | — |
+| Size | ≈ 19 KB bundled, not minified (≈ 9 KB minified), no dependency | + simplex, and still needs (a)'s flow for rounding |
+
+**Mobile estimate**: phone CPUs run this kind of JS ~3–4× slower, so typical worlds take
+≲ 2 s and scarce ones 3–6 s. That misses the "≲ 1 s on mobile" wish for scarce worlds.
+The popup should show a *Calculating…* state and run the solver after a paint (#5).
+
+Acceptance on large worlds: the count is reported against a cheap upper bound
+(resources and warehouses only). Typical worlds reach it. On scarce worlds the bound
+ignores merchants and distance, so the gap there isn't a solver gap: the LP bound on
+30–60 village worlds shows ≤ 2.6%.
 
 ## 6. Settings (per world, localStorage, in-popup UI — Library requirement)
 
