@@ -49,10 +49,18 @@ src/
     settings-store.js  createSettingsStore({name, version, defaults, migrate}) ->
                    per-world load/save/migrate/export/import (key `${world}${name}`)
     i18n.js        createI18n({tables, marketToLang}) -> translator + market->lang
+    html.js        parseHtml() -> light element tree + find/findAll/textOf/intOf. Pure (no
+                   DOM), so page parsers unit-test in Node against saved pages
   package-planner/ the Noble Package Planner (entry -> dist/package-planner.js)
-    bootstrap.js   entry: register (more per DESIGN-package-planner.md §3)
-    adapter/tw.js  the planner's ONLY TW-globals/DOM/endpoint module (own `w` cast)
-    core/          PURE: the planner's i18n table (+ solver/parsers to come)
+    bootstrap.js   entry: register, popup, preconditions, config + overviews -> result
+    adapter/tw.js  the planner's ONLY TW-globals/DOM/endpoint module (own `w` cast):
+                   env, throttled fetchText, overview/config URLs, Dialog.show($(host))
+    core/          PURE: parse-prod / parse-buildings / world-config parsers, overview.js
+                   (header `order=` keys, paging), load-overview (page=-1 then paged),
+                   storable, preconditions, debug-info (whitelisted, scrubbed), i18n
+    ui/popup.js    layout B; Dialog shown once, renders swap the host's children
+  test/fixtures/package-planner/  trimmed, anonymised slices of the user's real enc1
+                   pages (prod, buildings) + real public world configs (classic, coin)
   bootstrap.js     timetool2 entry: register, detect page, wire modules, start
   adapter/         the ONLY place that touches TW globals + TW-owned DOM
     tw.js          globals (Timing, game_data, TribalWars, $, ScriptAPI, Dialog), TW DOM, fetch
