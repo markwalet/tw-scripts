@@ -17,11 +17,11 @@ const packagesWith = (change) => solve(world, solverOptions({ ...settingsStore.d
 test('planner settings: the edit form reads what players type', () => {
   const current = settingsStore.defaults();
   const { settings, invalid } = readForm(
-    { maxTravel: '3:00', wood: '10.000', stone: '5000', iron: '', keepMerchants: '12', bufferPct: '2,5' },
+    { maxTravel: '3:00', wood: '10.000', stone: '5000', iron: '', keepMerchants: '12', bufferPct: '2,5', nobles: '' },
     current,
   );
   assert.deepEqual(invalid, []);
-  assert.deepEqual(settings, { version: 1, maxTravelSeconds: 10800, reserve: [10000, 5000, 0], keepMerchants: 12, bufferPct: 2.5 });
+  assert.deepEqual(settings, { version: 1, maxTravelSeconds: 10800, reserve: [10000, 5000, 0], keepMerchants: 12, bufferPct: 2.5, nobles: null });
   assert.equal(readForm({ ...formFields(current), maxTravel: '1:30:15' }, current).settings.maxTravelSeconds, 5415);
   assert.equal(readForm({ ...formFields(current), maxTravel: '' }, current).settings.maxTravelSeconds, null, 'empty = no limit');
 });
@@ -35,7 +35,7 @@ test('planner settings: a field that does not parse keeps its value and is repor
 
 test('planner settings: form fields show the current settings', () => {
   const s = { ...settingsStore.defaults(), maxTravelSeconds: 10800, reserve: [10000, 0, 500], keepMerchants: 3 };
-  assert.deepEqual(formFields(s), { maxTravel: '3:00', wood: '10000', stone: '0', iron: '500', keepMerchants: '3', bufferPct: '2' });
+  assert.deepEqual(formFields(s), { maxTravel: '3:00', wood: '10000', stone: '0', iron: '500', keepMerchants: '3', bufferPct: '2', nobles: '' });
   assert.equal(formFields(settingsStore.defaults()).maxTravel, '');
 });
 
@@ -77,7 +77,7 @@ function memoryStorage(initial = {}) {
 test('planner settings: defaults per DESIGN §6, saved per world', () => {
   const storage = memoryStorage();
   assert.deepEqual(settingsStore.load('en150', storage), {
-    version: 1, maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2,
+    version: 1, maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2, nobles: null,
   });
   settingsStore.save('en150', { ...settingsStore.defaults(), keepMerchants: 5 }, storage);
   assert.ok(storage.raw.has('en150pp_settings'));
@@ -90,8 +90,33 @@ test('planner settings: migration keeps valid stored values and replaces broken 
     en150pp_settings: JSON.stringify({ version: 0, maxTravelSeconds: 7200, reserve: [5000, 'x', -1], keepMerchants: -3, bufferPct: 'lots' }),
   });
   assert.deepEqual(settingsStore.load('en150', storage), {
-    version: 1, maxTravelSeconds: 7200, reserve: [5000, 0, 0], keepMerchants: 0, bufferPct: 2,
+    version: 1, maxTravelSeconds: 7200, reserve: [5000, 0, 0], keepMerchants: 0, bufferPct: 2, nobles: null,
   });
   assert.equal(settingsStore.migrate({ maxTravelSeconds: 0 }).maxTravelSeconds, null, '0 = no limit');
   assert.deepEqual(settingsStore.migrate({ reserve: 'nope' }).reserve, [0, 0, 0]);
+});
+
+test('planner settings: the noble target caps the plan at the packages still missing', () => {
+  const s = { ...settingsStore.defaults(), nobles: 1 };
+  assert.equal(solve(world, solverOptions(s, 2)).packages, 2);
+  assert.equal(solve(world, solverOptions(s, 0)).packages, 0);
+  assert.equal(solve(world, solverOptions(s, 9)).packages, 3);
+});
+
+test('planner settings: collect for X new nobles (empty = as many as possible)', () => {
+  const current = settingsStore.defaults();
+  assert.equal(current.nobles, null);
+  const read = (nobles) => readForm({ ...formFields(current), nobles }, current);
+  assert.equal(read('5').settings.nobles, 5);
+  assert.equal(read('').settings.nobles, null);
+  assert.equal(read('0').settings.nobles, null);
+  assert.deepEqual(read('a few').invalid, ['nobles']);
+  assert.equal(formFields(current).nobles, '');
+  assert.equal(formFields({ ...current, nobles: 5 }).nobles, '5');
+  const t = makeTranslator('en');
+  assert.equal(settingsLine({ ...current, nobles: 5 }, t), 'No travel limit · reserve 0/0/0 · keep 0 merchants · buffer 2% · for 5 nobles');
+  assert.ok(settingsLine({ ...current, nobles: 1 }, t).endsWith(' · for 1 noble'));
+  assert.equal(settingsStore.migrate({ nobles: 3 }).nobles, 3);
+  assert.equal(settingsStore.migrate({ nobles: 0 }).nobles, null);
+  assert.equal(settingsStore.migrate({ nobles: 'x' }).nobles, null);
 });

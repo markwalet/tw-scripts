@@ -50,6 +50,8 @@ const STRINGS = {
     settingKeep: 'keep {n} merchants',
     settingKeepOne: 'keep 1 merchant',
     settingBuffer: 'buffer {pct}%',
+    settingNobles: 'for {n} nobles',
+    settingNoblesOne: 'for 1 noble',
     edit: 'edit',
     close: 'close',
     maxTravelLabel: 'Max travel time (h:mm)',
