@@ -7,7 +7,7 @@
 
 import * as tw from './adapter/tw.js';
 import { resolveLang, makeTranslator, fill } from './core/i18n.js';
-import { parseWorldConfig } from './core/world-config.js';
+import { parseWorldConfig, RES } from './core/world-config.js';
 import { checkPreconditions } from './core/preconditions.js';
 import { loadOverview } from './core/load-overview.js';
 import { prodEntries } from './core/parse-prod.js';
@@ -52,6 +52,8 @@ const popup = createPopup({
   toast: tw.toast,
   onCalculate: () => { calculate(); },
   post: tw.postMarket,
+  // Failed-send evidence, kept for "Copy debug info" until the popup closes (last 5).
+  onFailure: (f) => { report.failures = [...(report.failures || []), f].slice(-5); },
   settingsPanel: createSettingsPanel({
     t,
     get: () => settings,
@@ -179,6 +181,7 @@ async function calculate() {
       target,
       warnings,
       transports: plan.transports,
+      cost: RES.map((k) => cfg.packageCost[k]),
       places: prod.byId,
     });
   } catch (err) {
