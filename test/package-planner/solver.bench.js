@@ -20,9 +20,10 @@ for (const c of cases) {
   for (const seed of [1, 2, 3]) {
     const world = generateWorld({ seed, ...c.world });
     const r = runCase(solve, world, c.options);
+    const last = `${Math.floor(r.longestSeconds / 3600)}:${String(Math.floor((r.longestSeconds % 3600) / 60)).padStart(2, '0')}`;
     console.log(
       `${c.name.padEnd(34)} seed ${seed}  ${String(r.packages).padStart(4)} / bound ${String(r.bound).padStart(4)}` +
-        `  ${String(r.ms).padStart(7)} ms  ${r.merchants} merchants  ${r.errors.length ? 'INVALID: ' + r.errors[0] : 'valid'}`,
+        `  last ${last}  ${String(r.ms).padStart(7)} ms  ${r.merchants} merchants  ${r.errors.length ? 'INVALID: ' + r.errors[0] : 'valid'}`,
     );
   }
 }
