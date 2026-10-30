@@ -3,7 +3,7 @@
 // their own styling. A renderer that needs a genuinely different LAYOUT can ignore this
 // base and implement the contract directly — the swap point (renderer.js) doesn't care.
 
-import { h, injectStyle } from '../dom.js';
+import { h, injectStyle } from '../../shared/dom.js';
 
 /**
  * @typedef {Object} RendererTheme

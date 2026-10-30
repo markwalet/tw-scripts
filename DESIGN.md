@@ -66,11 +66,14 @@ src/
     clock.js            # clock() -> Timing.getCurrentServerTime() + refocus resync (§4)
   core/                 # pure JS, no DOM, no globals — unit-tested in test/
     time-math.js        # arrival parsing, tz conversion, sendTime = arrival - duration
-    settings.js         # schema (JSDoc-typed), defaults, load/save, migration (§8)
-    i18n.js             # string tables + market->lang detection + lookup (§9)
-    queue.js            # ported request throttle/retry (twLib), read-only GETs
-  ui/
+    settings.js         # schema (JSDoc-typed) + defaults + migration (§8), on shared/settings-store.js
+    i18n.js             # string tables + market->lang map (§9), on shared/i18n.js
+  shared/               # generic, also used by the package planner
+    queue.js            # ported request throttle/retry (twLib), starts >= 200 ms apart
     dom.js              # tiny element builder (no innerHTML soup)
+    settings-store.js   # per-world load/save/migrate/export/import plumbing
+    i18n.js             # translator + market->lang lookup
+  ui/
     renderer.js         # one-line re-export of the active renderer (§7)
     renderers/
       modern.js         # candidate look A

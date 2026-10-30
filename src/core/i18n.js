@@ -1,6 +1,9 @@
-// core/i18n.js — UI-label translation (DESIGN.md §9).
+// core/i18n.js — timetool2's UI-label tables (DESIGN.md §9). The translator and
+// market->language logic is the shared helper (shared/i18n.js).
 // NOTE: reading TW DATA is language-agnostic (we read timestamps/data-* attributes,
-// never translated text), so this module only covers OUR OWN labels.
+// never translated text), so these tables only cover OUR OWN labels.
+
+import { createI18n } from '../shared/i18n.js';
 
 /** Our UI strings, keyed by semantic name. nl + en filled; add tables as needed. */
 const STRINGS = {
@@ -40,25 +43,7 @@ const STRINGS = {
 /** Map TW market code → our language table. */
 const MARKET_TO_LANG = { nl: 'nl', en: 'en', us: 'en', de: 'de' };
 
-/**
- * Resolve the active language.
- * @param {'auto'|'nl'|'en'|'de'} setting
- * @param {string} market  game_data.market
- * @returns {string}
- */
-export function resolveLang(setting, market) {
-  if (setting && setting !== 'auto') return setting;
-  return MARKET_TO_LANG[market] ?? 'en';
-}
+const i18n = createI18n({ tables: STRINGS, marketToLang: MARKET_TO_LANG });
 
-/**
- * Build a translator bound to a language. Falls back: lang → en → key.
- * @param {string} lang
- * @returns {(key: string) => string}
- */
-export function makeTranslator(lang) {
-  const table = STRINGS[lang] || STRINGS.en;
-  return (key) => table[key] ?? STRINGS.en[key] ?? key;
-}
-
-export const _availableLangs = Object.keys(STRINGS); // for the settings dropdown
+export const { resolveLang, makeTranslator } = i18n;
+export const _availableLangs = i18n.availableLangs; // for the settings dropdown

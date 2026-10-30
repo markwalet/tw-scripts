@@ -2,7 +2,7 @@
 // Everyday controls (snipe time/ms/remember) live on the main panel, NOT here.
 
 import * as tw from '../adapter/tw.js';
-import { h, injectStyle } from './dom.js';
+import { h, injectStyle } from '../shared/dom.js';
 import { Renderer } from './renderer.js';
 import { _availableLangs } from '../core/i18n.js';
 import { exportJSON, importJSON } from '../core/settings.js';
