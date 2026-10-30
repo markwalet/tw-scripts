@@ -32,9 +32,14 @@ test('bundle audit: one fetch and one TribalWars.post, both through the 200 ms q
 
 test('bundle audit: reviewer banner on top, readable (not minified)', () => {
   const banner = bundle.slice(0, bundle.indexOf('"use strict"'));
+  assert.ok(bundle.indexOf('"use strict"') > 0, 'strict mode');
   for (const s of ['Noble Package Planner', 'One click = one action', 'only when you click', 'read-only', '5 requests/s', 'No external calls']) {
     assert.ok(banner.includes(s), `banner mentions "${s}"`);
   }
+  // One wrapper keeps every name out of the page scope; nothing module-only is left.
+  assert.ok(banner.trimEnd().endsWith('(() => {') && bundle.trimEnd().endsWith('})();'), 'wrapped in one IIFE');
+  assert.ok(!/^(?:import|export)\b|import\.meta|^await\b/m.test(bundle), 'no module syntax');
+  new Function(bundle); // parses as a classic script
   const lines = bundle.split('\n');
   assert.ok(lines.length > 1000 && Math.max(...lines.map((l) => l.length)) < 400, 'one statement per line');
   assert.ok(!/@type\b/.test(bundle), 'no leftover JSDoc type casts');

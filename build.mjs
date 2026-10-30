@@ -1,4 +1,4 @@
-// Build: bundle src/ into two single, NON-minified, readable IIFEs:
+// Build: bundle src/ into two single, NON-minified, readable scripts (each one IIFE):
 //   dist/timetool2.js        (entry src/bootstrap.js)
 //   dist/package-planner.js  (entry src/package-planner/bootstrap.js)
 // Readable output is a hard requirement — TW reviewers read the hosted files.
@@ -75,11 +75,16 @@ const timetool2 = {
   },
 };
 
+// The planner is bundled flat (format esm, no imports/exports left) inside our own
+// `(() => { … })();` wrapper: same scoping as esbuild's iife, minus one indent level on
+// every line (≈ 4 KB). The wrapper keeps every name out of the page's global scope.
 /** @type {import('esbuild').BuildOptions} */
 export const plannerOptions = {
   ...common,
+  format: 'esm',
   entryPoints: [resolve(__dirname, 'src/package-planner/bootstrap.js')],
   outfile: resolve(__dirname, 'dist/package-planner.js'),
+  footer: { js: '})();' },
   banner: {
     js: [
       `// Noble Package Planner — TribalWars (classic worlds) market-transport planner.`,
@@ -93,6 +98,8 @@ export const plannerOptions = {
       `// with a noble target) one academy page, plus the market requests you click — all to`,
       `// this TribalWars world, through one queue of <= 5 requests/s. No external calls.`,
       `// Built from source; do not edit dist/ by hand. Design: DESIGN-package-planner.md.`,
+      `(() => {`,
+      `"use strict";`,
     ].join('\n'),
   },
 };
