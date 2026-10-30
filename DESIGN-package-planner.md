@@ -36,7 +36,8 @@ timetool2 and shares its adapter/core/ui conventions (see `CLAUDE.md`, `DESIGN.m
 - ~560 px wide on desktop, full width on mobile.
 - Settings collapsed into one line (`⚙ Max 3:00 · reserve 0/0/0 · keep 0 merchants · All → All`)
   with an *edit* link that unfolds the settings table; a full-width Calculate button.
-- One **summary line**, no stat tiles: `N new packages after everything arrives (T stored in total) → Academy › Store`,
+- One **summary line**, no stat tiles: `N packages storable after everything arrives (S already now, N−S from these transports) → Academy › Store`
+  (the solver total includes what the academies can store already without transports),
   `Last arrival in h:mm · k of n sent`, and the noble-target line when set.
 - One **card per target**: name + coords; `N packages to store after arrival`;
   wood/clay/iron totals · `from K villages` · `last arrival in h:mm` (only the latest
@@ -79,9 +80,11 @@ src/
       solver.js            the optimiser (§5), including the whole-merchant rounding
                            (it is part of the discretised model, so it stays inside)
       plan-view.js         plan -> summary line + one card per target, h:mm
+      settings.js          per-world settings (§6): schema, migrate, solver options
       nobles.js            "X nobles -> packages" math
       parse-*.js           HTML -> data parsers (fixtures in test/)
-    ui/popup.js            settings form + summary + cards (native look)
+    ui/popup.js            summary + cards (native look)
+    ui/settings-panel.js   collapsed settings line + edit table
 ```
 
 - `Dialog.show(id, content)` only accepts a **string, a jQuery object or a 1-arg
