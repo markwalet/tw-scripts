@@ -25,8 +25,12 @@ import { createSettingsPanel } from './ui/settings-panel.js';
 
 const t = makeTranslator(resolveLang('auto', tw.market()));
 
-// TODO(#13): confirm author/contact for the Script Library submission.
-tw.register(t('scriptName'), true, 'markwalet', 'en.tribalwars@coma.innogames.de');
+// SCRIPT LIBRARY AUTHOR — decide before the forum submission: the name and contact e-mail
+// TW's ScriptAPI shows for this script. TW rejects an empty e-mail on a hosted script; the
+// adapter then skips registering and the planner still runs.
+const AUTHOR = { name: 'markwalet', email: '' };
+
+tw.register(t('scriptName'), true, AUTHOR.name, AUTHOR.email);
 
 /** Everything the debug summary may show; filled as we go (whitelisted in buildDebugInfo). */
 /** @type {Parameters<typeof buildDebugInfo>[0]} */

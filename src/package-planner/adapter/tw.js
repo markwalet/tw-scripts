@@ -10,10 +10,15 @@ import { createQueue } from '../../shared/queue.js';
 import { outcome } from '../core/send.js';
 import { withSitter } from '../core/urls.js';
 
-/** Register with TW's ScriptAPI (guarded no-op if unavailable). */
+/**
+ * Register with TW's ScriptAPI. A no-op if unavailable; TW throws on an empty field when the
+ * script is hosted (ScriptAPI.url set) — registering is optional, so that never stops us.
+ */
 export function register(name, version, author, email) {
-  if (w.ScriptAPI && typeof w.ScriptAPI.register === 'function') {
-    w.ScriptAPI.register(name, version, author, email);
+  try {
+    w.ScriptAPI?.register?.(name, version, author, email);
+  } catch (err) {
+    console.warn('[Noble Package Planner] ScriptAPI.register:', err);
   }
 }
 
