@@ -74,13 +74,13 @@ export function postMarket(action, village, data, timeoutMs = 10000) {
 }
 
 /**
- * URL of a premium village overview, group "all" (`&t=` is added by fetchText).
+ * URL of a premium village overview (`&t=` is added by fetchText). TW remembers the
+ * last group asked for, so the planner's last fetches are always group 0 (all).
  * @param {'prod' | 'buildings' | 'trader'} mode  trader = incoming transports (type=inc)
  * @param {number} page  -1 = all on one page
  */
-export const overviewUrl = (mode, page) =>
-  `${String(gd().link_base_pure ?? '/game.php?screen=')}overview_villages&mode=${mode}${mode === 'trader' ? '&type=inc' : ''}&group=0&page=${page}`;
-
+export const overviewUrl = (mode, page, group = 0) =>
+  `${String(gd().link_base_pure ?? '/game.php?screen=')}overview_villages&mode=${mode}${mode === 'trader' ? '&type=inc' : ''}&group=${group}&page=${page}`;
 /** Link to Academy › Store (the mass-store sub-tab). */
 export const academyStoreUrl = () => withSitter(`${String(gd().link_base_pure ?? '/game.php?screen=')}snob&mode=reserve`, gd().player || {});
 

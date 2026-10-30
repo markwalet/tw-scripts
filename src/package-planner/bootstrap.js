@@ -101,21 +101,33 @@ async function calculate() {
   const env = report.env || tw.env();
   try {
     popup.render({ status: 'loading' });
+    const prodOf = (group = 0) =>
+      loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('prod', p, group)), parse: prodEntries, expected: group ? null : env.villages, label: 'prod' });
+    // A group's members = the rows of its Production overview (null = all). Read BEFORE
+    // the group-0 overviews: TW remembers the last group, and must be left on "all"
+    // (Request resources only accepts sources from the current group).
+    const members = async (/** @type {number} */ g) => (g ? new Set((await prodOf(g)).byId.keys()) : null);
+    const { senderGroup, receiverGroup } = settings;
+    const senders = await members(senderGroup);
+    const receivers = receiverGroup === senderGroup ? senders : await members(receiverGroup);
     const [prod, buildings, incoming] = await Promise.all([
-      loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('prod', p)), parse: prodEntries, expected: env.villages, label: 'prod' }),
+      prodOf(),
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('buildings', p)), parse: buildingsEntries, expected: env.villages, label: 'buildings' }),
       loadIncoming({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('trader', p)) }),
     ]);
     report.prod = prod;
     report.buildings = buildings;
     report.incoming = incoming;
+    // The group list for the dropdowns comes with the Production overview (no extra request).
+    if (prod.groups?.length) settings = { ...settings, groups: prod.groups };
+    settingsStore.save(report.env?.world ?? '', settings);
     const villages = [...prod.byId.values()];
-    const storable = storableNow(villages, buildings.byId, config.packageCost);
+    const storable = storableNow(villages, buildings.byId, config.packageCost, receivers);
     report.result = storable;
 
     popup.render({ status: 'calculating' });
     await afterPaint();
-    const input = solverInput({ villages, academyLevels: buildings.byId, incoming: incoming.byId, config });
+    const input = solverInput({ villages, academyLevels: buildings.byId, incoming: incoming.byId, senders, receivers, config });
     const t0 = performance.now();
     const plan = solve(input.world, { ...input.options, ...solverOptions(settings) });
     const ms = Math.round(performance.now() - t0);

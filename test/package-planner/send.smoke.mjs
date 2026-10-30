@@ -25,6 +25,12 @@ function stubs(fx, scenario) {
   window.game_data = { world: 'en1', market: 'en', device: mobile ? 'mobile' : 'desktop', majorVersion: '9', link_base_pure: '/game.php?village=101&screen=',
     player: { id: 1, sitter: mobile ? '7' : '0' }, features: { Premium: { active: true } } };
   window.UI = { SuccessMessage() {}, ErrorMessage() {} };
+  localStorage.clear(); // scenarios share one Chrome profile
+  if (scenario.name === 'groups') {
+    localStorage.setItem('en1pp_settings', JSON.stringify({ version: 1, senderGroup: 5, receiverGroup: 6 }));
+    fx.prod = `<div class="vis_item">Groups: <strong class="group-menu-item" data-group-id="0">&gt;all&lt;</strong>
+      <a class="group-menu-item" data-group-id="5" href="#">[Senders]</a> <a class="group-menu-item" data-group-id="6" href="#">[Academies]</a></div>${fx.prod}`;
+  }
   if (mobile) {
     // Long names must wrap, not widen the popup.
     fx.prod = fx.prod.replaceAll('data-text="Village ', 'data-text="Averyveryverylongvillagenamewithoutanyspaces');
@@ -87,6 +93,18 @@ async function driver(scenario) {
       check('&t=<player id> on every own GET while sitting', window.__gets.length >= 3 && window.__gets.every((u) => /[?&]t=1(&|$)/.test(u)), window.__gets);
       const links = $$('a[href*="game.php"]').map((a) => a.getAttribute('href'));
       check('game links (Academy › Store) carry &t=', links.length >= 1 && links.every((u) => /[?&]t=1(&|$)/.test(u)), links);
+      throw 'done';
+    }
+    if (scenario.name === 'groups') {
+      const gets = window.__gets.filter((u) => u.includes('overview_villages'));
+      const group = (u) => /[?&]group=(\d+)/.exec(u)?.[1];
+      check('group members read first (sender, then receiver group)', group(gets[0]) === '5' && group(gets[1]) === '6' && gets[0].includes('mode=prod'), gets);
+      check('every later overview read is group 0 (TW left on "all")', gets.length >= 5 && gets.slice(2).every((u) => group(u) === '0'), gets);
+      check('cards with groups set', ids().length >= 3, ids());
+      $$('.pp-link').find((a) => a.textContent === 'edit').click();
+      const opts = $$('.pp-settings select').map((s) => [...s.options].map((o) => o.text).join('|') + '=' + s.value);
+      check('group dropdowns: All + the groups from the overview, stored choice selected', opts.join() === 'All|Senders|Academies=5,All|Senders|Academies=6', opts);
+      check('collapsed line names the groups', $$('.pp-chipline span')[0].textContent.endsWith('Senders → Academies'), $$('.pp-chipline span')[0].textContent);
       throw 'done';
     }
     const before = ids();
@@ -157,6 +175,7 @@ const scenarios = [
   { name: 'captcha', failAt: 2, kind: 'captcha' },
   { name: 'no-answer', failAt: 2, kind: 'noAnswer' },
   { name: 'mobile-sitter' },
+  { name: 'groups' },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));
 let failed = 0;
