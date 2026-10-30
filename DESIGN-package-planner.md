@@ -275,6 +275,22 @@ ignores merchants and distance, so the gap there isn't a solver gap: the LP boun
 
 Export/import and schema migration follow timetool2's `settings.js`.
 
+**Groups** (#10, `core/overview.js` `groupMenu`, `core/model.js`):
+- The group list comes from the group menu every overview renders
+  (`.group-menu-item[data-group-id]`, 0 = all; names without the `[ ]` / `> <`), read from
+  the Production overview Calculate fetches anyway: **0 extra requests**. It is saved with
+  the settings, so the dropdowns are filled on the next open; before the first Calculate
+  they only offer *All*. A group that no longer exists shows as `#id` in the settings line.
+- Membership: a non-*All* group costs **one** extra request (Production overview with
+  `&group=<id>`, its rows = the members); sender = receiver group is read once. The solver
+  input is filtered, not the overviews: villages outside the sender group get
+  `sender: false`, academies outside the receiver group are no target (and do not count in
+  "storable now"). Receivers stay limited to academy villages.
+- TW remembers the last group asked for (sticky, server side), and Request resources only
+  accepts sources from the current group (test checkpoint 3 sent fine with group 0). So the
+  group reads come **first** and every later read (Production, Buildings, Trader) uses
+  `group=0`: the player is left on *All*, as every Calculate already did before groups.
+
 ## 7. Sending
 
 - **Primary: one row per target via Request resources** — one click fills one academy

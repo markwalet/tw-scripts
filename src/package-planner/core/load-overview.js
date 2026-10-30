@@ -9,6 +9,7 @@
  *   entries: Array<[number, T]>,
  *   expectedCount: number | null,
  *   pages: number[],
+ *   groups?: Array<[number, string]>,   the village-group menu (Production overview)
  *   warnings: string[],
  *   structure: object,
  * }} OverviewPage
@@ -44,6 +45,7 @@ export async function loadOverview({ fetchPage, parse, expected = null, label = 
 
   return {
     byId,
+    groups: first.groups,
     warnings,
     structure: { ...first.structure, expectedCount: first.expectedCount, pagesLinked: first.pages.length, pagesFetched, read: byId.size },
   };

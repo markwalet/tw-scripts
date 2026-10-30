@@ -40,6 +40,26 @@ test('solverInput: no world speed in the config -> speed 1 with a warning', () =
   assert.match(warnings[0], /speed/);
 });
 
+test('solverInput: group filters — only sender-group villages send, only receiver-group academies receive', () => {
+  const { world } = solverInput({
+    villages: [prodVillage(1), prodVillage(2), prodVillage(3)],
+    academyLevels: new Map([[1, 1], [2, 1], [3, 0]]),
+    senders: new Set([2, 3]),
+    receivers: new Set([1, 3]),
+    config,
+  });
+  assert.deepEqual(world.villages.map((v) => [v.id, v.academy, v.sender]), [
+    [1, true, false],   // receiver academy, not a sender
+    [2, false, true],   // academy outside the receiver group: only sends
+    [3, false, true],   // receiver group but no academy
+  ]);
+});
+
+test('solverInput: no group (All) -> every village sends, every academy receives', () => {
+  const { world } = solverInput({ villages: [prodVillage(1), prodVillage(2)], academyLevels: new Map([[1, 1], [2, 1]]), config });
+  assert.deepEqual(world.villages.map((v) => [v.academy, v.sender]), [[true, undefined], [true, undefined]]);
+});
+
 // Real enc1 village: mines 30/30/30, base_production 33, speed 3.6. The game reported
 // wood_prod = stone_prod = iron_prod = 2.6400000293394 /s, i.e. 9504 per hour.
 const enc1 = { ...config, baseProduction: 33 };

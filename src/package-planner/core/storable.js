@@ -8,8 +8,9 @@
  * @param {ProdVillage[]} villages
  * @param {Map<number, number>} academyLevels  village id -> academy level
  * @param {Cost} cost
+ * @param {Set<number> | null} [receivers]  receiver group members (null = all)
  */
-export function storableNow(villages, academyLevels, cost) {
+export function storableNow(villages, academyLevels, cost, receivers) {
   let packages = 0;
   let academies = 0;
   let notInBuildings = 0;
@@ -19,7 +20,7 @@ export function storableNow(villages, academyLevels, cost) {
       notInBuildings += 1;
       continue;
     }
-    if (level < 1) continue;
+    if (level < 1 || (receivers && !receivers.has(v.id))) continue;
     academies += 1;
     packages += Math.floor(Math.min(v.wood / cost.wood, v.stone / cost.stone, v.iron / cost.iron));
   }
