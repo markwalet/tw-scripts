@@ -8,6 +8,7 @@ const w = /** @type {any} */ (window);
 
 import { createQueue } from '../../shared/queue.js';
 import { outcome } from '../core/send.js';
+import { withSitter } from '../core/urls.js';
 
 /** Register with TW's ScriptAPI (guarded no-op if unavailable). */
 export function register(name, version, author, email) {
@@ -40,8 +41,9 @@ export function env() {
 // Every request goes through ONE throttled queue: starts >= 200 ms apart (<= 5/s).
 const queue = createQueue({ concurrency: 2, maxAttempts: 2, minIntervalMs: 200 });
 
-/** GET a same-origin URL as text, through the throttled queue. @param {string} url */
+/** GET a same-origin URL as text, through the throttled queue (`&t=` added when sitting). @param {string} url */
 export function fetchText(url) {
+  url = withSitter(url, gd().player || {});
   return queue.add(() =>
     fetch(url, { credentials: 'same-origin' }).then((res) => {
       if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
@@ -72,24 +74,15 @@ export function postMarket(action, village, data, timeoutMs = 10000) {
 }
 
 /**
- * URL of a premium village overview, group "all". TW's own buildURL adds `&t=<id>` when
- * sitting; the fallback does the same.
+ * URL of a premium village overview, group "all" (`&t=` is added by fetchText).
  * @param {'prod' | 'buildings' | 'trader'} mode  trader = incoming transports (type=inc)
  * @param {number} page  -1 = all on one page
  */
-export function overviewUrl(mode, page) {
-  const params = { mode, ...(mode === 'trader' ? { type: 'inc' } : {}), group: 0, page };
-  if (w.TribalWars && typeof w.TribalWars.buildURL === 'function') {
-    return String(w.TribalWars.buildURL('GET', 'overview_villages', params));
-  }
-  const g = gd();
-  const base = String(g.link_base_pure ?? '/game.php?screen=');
-  const t = parseInt(g.player?.sitter, 10) > 0 ? `&t=${g.player.id}` : '';
-  return `${base}overview_villages&${Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&')}${t}`;
-}
+export const overviewUrl = (mode, page) =>
+  `${String(gd().link_base_pure ?? '/game.php?screen=')}overview_villages&mode=${mode}${mode === 'trader' ? '&type=inc' : ''}&group=0&page=${page}`;
 
 /** Link to Academy › Store (the mass-store sub-tab). */
-export const academyStoreUrl = () => `${String(gd().link_base_pure ?? '/game.php?screen=')}snob&mode=reserve`;
+export const academyStoreUrl = () => withSitter(`${String(gd().link_base_pure ?? '/game.php?screen=')}snob&mode=reserve`, gd().player || {});
 
 const CONFIG_TTL_MS = 24 * 3600 * 1000;
 
