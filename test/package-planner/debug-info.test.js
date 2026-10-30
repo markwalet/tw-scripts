@@ -17,6 +17,7 @@ async function report() {
     prod,
     buildings,
     result: { packages: 2, academies: 4, villages: 5, notInBuildings: 0 },
+    plan: { packages: 7, cards: 3, transports: 9, merchants: 412, longestSeconds: 1393, ms: 41 },
     error: 'GET /game.php?village=101&screen=overview_villages&t=1000001 failed: 503',
     // Must never appear in the output:
     player: { id: 1000001, name: 'Test Player' },
@@ -32,6 +33,7 @@ test('buildDebugInfo: includes what the parsers saw, counts and the result', asy
   assert.match(out, /academy levels: 0:1 2:3 3:1/);
   assert.match(out, /storable now: 2 packages in 4 academies/);
   assert.match(out, /cost 28000\/30000\/25000/);
+  assert.match(out, /plan: 7 packages, 3 targets, 9 transports, 412 merchants, longest 1393 s, solved in 41 ms/);
 });
 
 test('buildDebugInfo: leaks no player name, player/village ids, coordinates or tokens', async () => {
