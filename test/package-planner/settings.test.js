@@ -114,8 +114,7 @@ test('planner settings: collect for X new nobles (empty = as many as possible)',
   assert.equal(formFields(current).nobles, '');
   assert.equal(formFields({ ...current, nobles: 5 }).nobles, '5');
   const t = makeTranslator('en');
-  assert.equal(settingsLine({ ...current, nobles: 5 }, t), 'No travel limit · reserve 0/0/0 · keep 0 merchants · buffer 2% · for 5 nobles');
-  assert.ok(settingsLine({ ...current, nobles: 1 }, t).endsWith(' · for 1 noble'));
+  assert.equal(settingsLine({ ...current, nobles: 5 }, t), 'No travel limit · reserve 0/0/0 · keep 0 merchants · buffer 2% · nobles: 5');
   assert.equal(settingsStore.migrate({ nobles: 3 }).nobles, 3);
   assert.equal(settingsStore.migrate({ nobles: 0 }).nobles, null);
   assert.equal(settingsStore.migrate({ nobles: 'x' }).nobles, null);

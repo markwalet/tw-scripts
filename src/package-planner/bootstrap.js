@@ -1,7 +1,8 @@
 // package-planner/bootstrap.js — entry point of the Noble Package Planner
 // (DESIGN-package-planner.md). Registers with TW, opens the popup and checks the
 // preconditions. Each Calculate reads the Production, Buildings and Trader (incoming)
-// overviews (what is on the way counts as arrived), runs the
+// overviews (what is on the way counts as arrived) — plus, only with a noble target set,
+// one academy page (price + stored packages; costs a request, so not otherwise) — runs the
 // solver once (the plan is a snapshot) and shows it as cards.
 
 import * as tw from './adapter/tw.js';
@@ -18,6 +19,7 @@ import { solve } from './core/solver.js';
 import { planView } from './core/plan-view.js';
 import { buildDebugInfo } from './core/debug-info.js';
 import { settingsStore, solverOptions } from './core/settings.js';
+import { parseAcademy, nobleTarget } from './core/noble-target.js';
 import { createPopup } from './ui/popup.js';
 import { createSettingsPanel } from './ui/settings-panel.js';
 
@@ -113,11 +115,21 @@ async function calculate() {
     const storable = storableNow(villages, buildings.byId, config.packageCost);
     report.result = storable;
 
+    const warnings = [...config.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
+    let target = null;
+    const x = settings.nobles;
+    const academy = x && [...buildings.byId].find(([, level]) => level > 0);
+    if (academy) {
+      const a = parseAcademy(await tw.fetchText(tw.academyUrl(academy[0])));
+      if (a) target = { x, stored: a.stored, ...nobleTarget(x, a.price, a.stored) };
+      else warnings.push(t('noAcademyPage'));
+    }
+
     popup.render({ status: 'calculating' });
     await afterPaint();
     const input = solverInput({ villages, academyLevels: buildings.byId, incoming: incoming.byId, config });
     const t0 = performance.now();
-    const plan = solve(input.world, { ...input.options, ...solverOptions(settings) });
+    const plan = solve(input.world, { ...input.options, ...solverOptions(settings, target?.missing) });
     const ms = Math.round(performance.now() - t0);
     const view = planView(plan, prod.byId, storable.packages);
     report.plan = {
@@ -125,13 +137,13 @@ async function calculate() {
       merchants: plan.merchants, longestSeconds: plan.longestSeconds, ms,
     };
 
-    const warnings = [...config.warnings, ...input.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
+    warnings.push(...input.warnings);
     if (storable.notInBuildings) warnings.push(`${storable.notInBuildings} villages are missing from the Buildings overview`);
     popup.render({
       status: 'done',
       plan: view,
       detail: { merchants: plan.merchants, academies: storable.academies, villages: villages.length },
-      stored: null, // packages already stored: read from the academy page with the noble target (#10)
+      target,
       warnings,
       transports: plan.transports,
       places: prod.byId,

@@ -111,7 +111,7 @@ src/
 | Academy present (snob level ≥ 1) | `overview_villages&mode=buildings&page=-1` |
 | Transports already on the way | `overview_villages&mode=trader&type=inc&page=-1` |
 | Package cost, `gold` flag, world/unit speed | `/interface.php?func=get_config` (`snob.coin_wood/coin_stone/coin_iron`, `snob.gold`, `speed`, `unit_speed`) — public, cached per world |
-| Packages stored, price of next noble | one academy page (`screen=snob`) — only needed for the noble target |
+| Packages stored, price of next noble | one academy page (`screen=snob`, of a village with an academy; "<n> x <img res>" cells: 1st = price, 2nd = stored) — fetched **only when the noble target is set** (one extra request, after the Buildings overview); without it the "stored in total" part stays hidden |
 | Merchant capacity | 1000 default; read live if a page exposes it, warn when falling back |
 
 - **Package cost and flags are read live**, never hard-coded; fall back to 28000/30000/25000

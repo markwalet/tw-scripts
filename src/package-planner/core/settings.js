@@ -118,7 +118,7 @@ export const formFields = (s) => ({
   iron: String(s.reserve[2]),
   keepMerchants: String(s.keepMerchants),
   bufferPct: String(s.bufferPct),
-  nobles: s.nobles ? String(s.nobles) : '',
+  nobles: String(s.nobles ?? ''),
 });
 
 /**
@@ -133,6 +133,5 @@ export function settingsLine(s, t) {
     fill(t('settingReserve'), { wood, stone, iron }),
     s.keepMerchants === 1 ? t('settingKeepOne') : fill(t('settingKeep'), { n: fmt(s.keepMerchants) }),
     fill(t('settingBuffer'), { pct: s.bufferPct }),
-    ...(s.nobles ? [s.nobles === 1 ? t('settingNoblesOne') : fill(t('settingNobles'), { n: s.nobles })] : []),
-  ].join(' · ');
+  ].concat(s.nobles ? fill(t('settingNobles'), { n: s.nobles }) : []).join(' · ');
 }
