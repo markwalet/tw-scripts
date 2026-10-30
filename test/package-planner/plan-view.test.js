@@ -42,12 +42,20 @@ test('planView: one card per target that gets transports, soonest last arrival f
 
 test('planView: summary counts every package, also those that need no transport', () => {
   const view = planView(plan, names);
-  assert.deepEqual(view.summary, { packages: 5, lastArrivalSeconds: 500, cards: 2, sent: 0 });
+  assert.deepEqual(view.summary, { packages: 5, storableNow: 0, fromTransports: 5, lastArrivalSeconds: 500, cards: 2, sent: 0 });
+});
+
+test('planView: splits the total into storable now and what the transports add', () => {
+  // The solver total counts packages the academies could already store without transports.
+  const view = planView({ ...plan, packages: 71 }, names, 17);
+  assert.equal(view.summary.packages, 71);
+  assert.equal(view.summary.storableNow, 17);
+  assert.equal(view.summary.fromTransports, 54);
 });
 
 test('planView: empty plan -> no cards, nothing to wait for', () => {
   const view = planView({ packages: 0, perAcademy: [], transports: [], merchants: 0, longestSeconds: 0, resourceHours: 0 }, names);
-  assert.deepEqual(view, { summary: { packages: 0, lastArrivalSeconds: 0, cards: 0, sent: 0 }, cards: [] });
+  assert.deepEqual(view, { summary: { packages: 0, storableNow: 0, fromTransports: 0, lastArrivalSeconds: 0, cards: 0, sent: 0 }, cards: [] });
 });
 
 test('hm / hms: durations the way the game shows them (h:mm cuts the seconds off)', () => {

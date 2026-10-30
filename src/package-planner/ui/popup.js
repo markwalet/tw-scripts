@@ -105,8 +105,8 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   function planBody(v) {
     const { summary, cards } = v.plan;
     const headline = [
-      h('b', { text: count('newPackages', summary.packages) }),
-      t('afterArrival'),
+      h('b', { text: count('storableAfter', summary.packages) }),
+      summary.storableNow ? fill(t('storableSplit'), { now: fmt(summary.storableNow), added: fmt(summary.fromTransports) }) : '',
       v.stored == null ? '' : fill(t('storedTotal'), { n: fmt(v.stored + summary.packages) }),
       ' → ',
       storeLink(),

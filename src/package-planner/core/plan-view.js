@@ -24,9 +24,12 @@ export const hm = (s) => hms(s).slice(0, -3);
 /**
  * @param {Plan} plan
  * @param {Map<number, Place>} places  village id -> name + coords
- * @returns {{ summary: { packages: number, lastArrivalSeconds: number, cards: number, sent: number }, cards: Card[] }}
+ * @param {number} [storableNow]  packages the academies can store already, without transports
+ *   (the solver total includes them)
+ * @returns {{ summary: { packages: number, storableNow: number, fromTransports: number,
+ *   lastArrivalSeconds: number, cards: number, sent: number }, cards: Card[] }}
  */
-export function planView(plan, places) {
+export function planView(plan, places, storableNow = 0) {
   const place = (/** @type {number} */ id) => places.get(id) ?? { name: `#${id}`, x: 0, y: 0 };
   const packages = new Map(plan.perAcademy.map((p) => [p.id, p.packages]));
   /** @type {Map<number, Card>} */
@@ -57,6 +60,8 @@ export function planView(plan, places) {
   return {
     summary: {
       packages: plan.packages,
+      storableNow,
+      fromTransports: Math.max(0, plan.packages - storableNow),
       lastArrivalSeconds: list.reduce((m, c) => Math.max(m, c.lastArrivalSeconds), 0),
       cards: list.length,
       sent: 0,

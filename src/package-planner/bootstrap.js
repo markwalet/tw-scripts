@@ -105,7 +105,7 @@ async function calculate() {
     const t0 = performance.now();
     const plan = solve(input.world, input.options);
     const ms = Math.round(performance.now() - t0);
-    const view = planView(plan, prod.byId);
+    const view = planView(plan, prod.byId, storable.packages);
     report.plan = {
       packages: plan.packages, cards: view.cards.length, transports: plan.transports.length,
       merchants: plan.merchants, longestSeconds: plan.longestSeconds, ms,
