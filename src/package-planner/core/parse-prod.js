@@ -106,3 +106,9 @@ export function parseProd(html) {
     },
   };
 }
+
+/** parseProd in the shape loadOverview() takes (entries keyed by village id). @param {string} html */
+export function prodEntries(html) {
+  const { villages, ...rest } = parseProd(html);
+  return { ...rest, entries: villages.map((v) => /** @type {[number, ProdVillage]} */ ([v.id, v])) };
+}

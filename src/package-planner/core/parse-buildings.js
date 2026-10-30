@@ -59,3 +59,9 @@ export function parseBuildings(html) {
     },
   };
 }
+
+/** parseBuildings in the shape loadOverview() takes (academy level keyed by village id). @param {string} html */
+export function buildingsEntries(html) {
+  const { levels, ...rest } = parseBuildings(html);
+  return { ...rest, entries: [...levels.entries()] };
+}
