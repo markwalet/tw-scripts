@@ -17,7 +17,9 @@ import { solverInput } from './core/model.js';
 import { solve } from './core/solver.js';
 import { planView } from './core/plan-view.js';
 import { buildDebugInfo } from './core/debug-info.js';
+import { settingsStore, solverOptions } from './core/settings.js';
 import { createPopup } from './ui/popup.js';
+import { createSettingsPanel } from './ui/settings-panel.js';
 
 const t = makeTranslator(resolveLang('auto', tw.market()));
 
@@ -30,6 +32,8 @@ const report = { env: tw.env() };
 /** @type {ReturnType<typeof parseWorldConfig> | null} */
 let config = null;
 let busy = false;
+/** Saved per world (localStorage); edited in the popup, used by the next Calculate. */
+let settings = settingsStore.load(report.env?.world ?? '');
 
 const popup = createPopup({
   t,
@@ -40,6 +44,11 @@ const popup = createPopup({
   toast: tw.toast,
   onCalculate: () => { calculate(); },
   post: tw.postMarket,
+  settingsPanel: createSettingsPanel({
+    t,
+    get: () => settings,
+    save: (next) => { settings = next; settingsStore.save(report.env?.world ?? '', next); },
+  }),
 });
 
 /** @param {unknown} err */
@@ -108,9 +117,9 @@ async function calculate() {
     await afterPaint();
     const input = solverInput({ villages, academyLevels: buildings.byId, incoming: incoming.byId, config });
     const t0 = performance.now();
-    const plan = solve(input.world, input.options);
+    const plan = solve(input.world, { ...input.options, ...solverOptions(settings) });
     const ms = Math.round(performance.now() - t0);
-    const view = planView(plan, prod.byId);
+    const view = planView(plan, prod.byId, storable.packages);
     report.plan = {
       packages: plan.packages, cards: view.cards.length, transports: plan.transports.length,
       merchants: plan.merchants, longestSeconds: plan.longestSeconds, ms,

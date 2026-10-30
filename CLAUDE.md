@@ -61,8 +61,10 @@ src/
                    parse-incoming (Trader incoming -> in-flight per target; last
                    info_village link + .wood/.stone/.iron wrapper amounts), storable, preconditions, debug-info (whitelisted, scrubbed), i18n,
                    solver (§5, incl. merchant rounding), model (overviews -> solver
-                   input), plan-view (plan -> summary + cards, h:mm)
+                   input), plan-view (plan -> summary + cards, h:mm), settings (per-world
+                   schema `<world>pp_settings`, migrate, solver options, form parse, line)
     ui/popup.js    layout B; Dialog shown once, renders swap the host's children
+    ui/settings-panel.js  collapsed settings line + edit table; saves on every change
   test/fixtures/package-planner/  trimmed, anonymised slices of the user's real enc1
                    pages (prod, buildings) + real public world configs (classic, coin)
   bootstrap.js     timetool2 entry: register, detect page, wire modules, start
