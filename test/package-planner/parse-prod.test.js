@@ -7,11 +7,12 @@ import { parseProd } from '../../src/package-planner/core/parse-prod.js';
 // names/ids/coords replaced). Header links carry `order=storage_max` etc.
 const fixture = readFileSync(new URL('../fixtures/package-planner/prod.html', import.meta.url), 'utf8');
 
-test('parseProd: reads id, coords, resources, warehouse and merchants per village', () => {
+test('parseProd: reads id, name, coords, resources, warehouse and merchants per village', () => {
   const { villages } = parseProd(fixture);
   assert.equal(villages.length, 5);
   assert.deepEqual(villages[0], {
     id: 101,
+    name: 'Village 1',
     x: 500,
     y: 500,
     wood: 33140,
