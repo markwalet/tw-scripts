@@ -1,6 +1,7 @@
 // package-planner/bootstrap.js — entry point of the Noble Package Planner
 // (DESIGN-package-planner.md). Registers with TW, opens the popup and checks the
-// preconditions. Each Calculate reads the Production + Buildings overviews, runs the
+// preconditions. Each Calculate reads the Production, Buildings and Trader (incoming)
+// overviews (what is on the way counts as arrived), runs the
 // solver once (the plan is a snapshot) and shows it as cards.
 
 import * as tw from './adapter/tw.js';
@@ -10,6 +11,7 @@ import { checkPreconditions } from './core/preconditions.js';
 import { loadOverview } from './core/load-overview.js';
 import { prodEntries } from './core/parse-prod.js';
 import { buildingsEntries } from './core/parse-buildings.js';
+import { loadIncoming } from './core/parse-incoming.js';
 import { storableNow } from './core/storable.js';
 import { solverInput } from './core/model.js';
 import { solve } from './core/solver.js';
@@ -90,19 +92,21 @@ async function calculate() {
   const env = report.env || tw.env();
   try {
     popup.render({ status: 'loading' });
-    const [prod, buildings] = await Promise.all([
+    const [prod, buildings, incoming] = await Promise.all([
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('prod', p)), parse: prodEntries, expected: env.villages, label: 'prod' }),
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('buildings', p)), parse: buildingsEntries, expected: env.villages, label: 'buildings' }),
+      loadIncoming({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('trader', p)) }),
     ]);
     report.prod = prod;
     report.buildings = buildings;
+    report.incoming = incoming;
     const villages = [...prod.byId.values()];
     const storable = storableNow(villages, buildings.byId, config.packageCost);
     report.result = storable;
 
     popup.render({ status: 'calculating' });
     await afterPaint();
-    const input = solverInput({ villages, academyLevels: buildings.byId, config });
+    const input = solverInput({ villages, academyLevels: buildings.byId, incoming: incoming.byId, config });
     const t0 = performance.now();
     const plan = solve(input.world, input.options);
     const ms = Math.round(performance.now() - t0);
@@ -112,7 +116,7 @@ async function calculate() {
       merchants: plan.merchants, longestSeconds: plan.longestSeconds, ms,
     };
 
-    const warnings = [...config.warnings, ...input.warnings, ...prod.warnings, ...buildings.warnings];
+    const warnings = [...config.warnings, ...input.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
     if (storable.notInBuildings) warnings.push(`${storable.notInBuildings} villages are missing from the Buildings overview`);
     popup.render({
       status: 'done',

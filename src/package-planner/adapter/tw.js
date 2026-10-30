@@ -74,18 +74,18 @@ export function postMarket(action, village, data, timeoutMs = 10000) {
 /**
  * URL of a premium village overview, group "all". TW's own buildURL adds `&t=<id>` when
  * sitting; the fallback does the same.
- * @param {'prod' | 'buildings'} mode
+ * @param {'prod' | 'buildings' | 'trader'} mode  trader = incoming transports (type=inc)
  * @param {number} page  -1 = all on one page
  */
 export function overviewUrl(mode, page) {
-  const params = { mode, group: 0, page };
+  const params = { mode, ...(mode === 'trader' ? { type: 'inc' } : {}), group: 0, page };
   if (w.TribalWars && typeof w.TribalWars.buildURL === 'function') {
     return String(w.TribalWars.buildURL('GET', 'overview_villages', params));
   }
   const g = gd();
   const base = String(g.link_base_pure ?? '/game.php?screen=');
   const t = parseInt(g.player?.sitter, 10) > 0 ? `&t=${g.player.id}` : '';
-  return `${base}overview_villages&mode=${mode}&group=0&page=${page}${t}`;
+  return `${base}overview_villages&${Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&')}${t}`;
 }
 
 /** Link to Academy › Store (the mass-store sub-tab). */
