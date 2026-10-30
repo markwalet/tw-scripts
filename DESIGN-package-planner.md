@@ -74,7 +74,7 @@ src/
   shared/                  lifted from timetool2 where generic (dom.js h(), queue.js,
                            settings load/save/migrate, i18n helper)
   package-planner/
-    bootstrap.js           register, preconditions, open popup
+    bootstrap.js           register (author constant), preconditions, open popup
     adapter/tw.js          ONLY place touching TW globals, TW DOM/HTML, endpoints
     core/                  PURE, unit-tested:
       model.js             overviews + world config -> solver input
@@ -82,7 +82,7 @@ src/
                            (it is part of the discretised model, so it stays inside)
       plan-view.js         plan -> summary line + one card per target, h:mm
       settings.js          per-world settings (§6): schema, migrate, solver options
-      nobles.js            "X nobles -> packages" math
+      noble-target.js      "X nobles -> packages" math
       parse-*.js           HTML -> data parsers (fixtures in test/)
     ui/popup.js            summary + cards (native look)
     ui/settings-panel.js   collapsed settings line + edit table
@@ -96,10 +96,17 @@ src/
 - **English only** for v1; every label goes through the i18n table so a language is
   only a table entry. Data parsing is language-independent (ids, attributes, numbers —
   never translated header text).
-- **Size budget**: the shipped `dist/package-planner.js` stays readable and in line with
-  other TW scripts: target ≤ ~60 KB, hard limit ~80 KB (timetool2 ≈ 43 KB, Shinko's
-  Warehouse Balancer ≈ 92 KB, the old resources balancer ≈ 126 KB). No large LP/MILP
-  library in the bundle.
+- **Size**: no hard limit — keep it as small as reasonably possible without hurting
+  readability (reviewers read the shipped file). Reference points from other resource
+  scripts: Shinko's resource sender ≈ 26 KB (single target, no optimiser), Shinko's
+  Warehouse Balancer ≈ 92 KB, Costache's resources balancer ≈ 126 KB; timetool2 ≈ 43 KB.
+  Never minified or obfuscated; no large LP/MILP library in the bundle.
+  **Now (#13): ≈ 79 KB** (78,635 bytes; 84,055 before the trim pass, ~77 KB before
+  #8/#10/#11). The trim: one shared resource-key list, one precondition path, shared
+  label/plural and resource-span helpers, JSDoc type-only comments dropped at build time
+  (they named types that aren't in the shipped file), and the planner bundled flat inside
+  our own `(() => { … })()` wrapper (one indent level less, ≈ 4 KB). About a third is
+  the solver (§5) and the HTML reader that keeps `core/` testable without a DOM.
 - Requests go through the shared queue, throttled to **≤ 5 requests/s** (200 ms spacing,
   the approval-thread limit; RedAlert's SDK uses the same).
 
@@ -342,12 +349,61 @@ validate what can't be checked offline. Other work carries on; results come back
 2. After the plan cards: is the plan plausible; do travel times match the market page?
 3. After sending: one real, small send; record what the game returns.
 
+## Review audit (#13)
+
+`test/package-planner/bundle-audit.test.js` bundles the planner with the real build options
+and checks the shipped text on every `npm test`:
+- **No external hosts**: no absolute or protocol-relative URL, no XMLHttpRequest /
+  `$.ajax|get|post` / getScript / sendBeacon / WebSocket / EventSource / `import()` /
+  `eval` / `new Function`, no script/img/iframe/link element created; the only paths
+  requested are `/game.php` (incl. `game_data.link_base_pure`) and `/interface.php`
+  (world config).
+- **Throttle**: exactly one `fetch(` (`fetchText`) and one `TribalWars.post(`
+  (`postMarket`), both inside `queue.add`; the planner's queue has `minIntervalMs: 200`
+  (≤ 5 requests/s; the spacing itself is unit-tested in `test/queue.test.js`). GETs retry
+  once through the queue; market posts never retry (they always resolve with an outcome).
+- **Banner** on top (one click = one action, read-only, ≤ 5 requests/s, no external
+  calls), strict mode, one IIFE, no module syntax, parses as a classic script, not minified.
+Result on #13: all pass. Click lock 200 ms + one request per click: `send.smoke.mjs`.
+
+## Script Library / forum submission (draft)
+
+> **Noble Package Planner** (classic worlds, premium account)
+> Plans market transports between your own villages so your academy villages can store as
+> many complete noble packages as possible — account-wide, not village by village. Open it
+> from the quickbar on any page, press *Calculate plan*, and you get one card per academy
+> village: how many packages it can store after arrival, what comes from where, and when
+> the last merchants arrive. Each card has one button that sends TW's own *Request
+> resources* for that village (fallback: one transport per click). Storing the packages
+> stays manual (Academy › Store).
+> **Rules**: one click = one action; buttons lock 200 ms after each click; nothing is sent,
+> stored, minted or trained automatically. It only reads your premium overviews, the
+> world config and (with a noble target) one academy page — all from TribalWars, at most
+> 5 requests per second. No external calls. Settings (travel limit, reserve, merchants to
+> keep home, warehouse buffer, sender/receiver group, noble target) are saved per world.
+> Source: readable, not minified.
+
+Before submitting: fill in the ScriptAPI author/e-mail (`AUTHOR` in
+`src/package-planner/bootstrap.js`; e-mail is empty for now, and TW's `register` rejects an
+empty one on hosted scripts — the planner then just doesn't register).
+
 ## Open / verify on a live page
 
-- Response shape of `call` / `map_send` (handle defensively; `game_data` merge happens
-  in TW's `handleResponse`).
-- Merchant travel speed: formula checked on a saved Request-resources page (§5); still to
-  compare the plan's times on a live page (test checkpoint 2).
-- Merchant capacity on the player's world (1000?).
-- Whether `call` needs the `select-village` / `target_id: 0` fields Shinko sends.
-- DOM/table structure of the three overview pages (save as test fixtures).
+Verified on the player's world (enc1, 2026-10-30):
+- `ajaxaction=call` with the current payload (`target_id: 0` + `resource[src][res]`, no
+  `select-village`) works: green "The resources were shipped". Response:
+  `response.success` (message), `response.transport_info[]` per source (`resources_left`,
+  `needed_trader_capacity`, `traders_free` number, `traders_total` string),
+  `response.total_incoming_res` (HTML amounts, `last_arrival` epoch s, `arrive` text), plus
+  the target village's `game_data` (merged by TW's `handleResponse`).
+- Merchant capacity 1000: `needed_trader_capacity: 1000` for one merchant.
+- Overview parsers read all 65 villages correctly (test checkpoint 1; fixtures in
+  `test/fixtures/package-planner/`).
+- The plan was judged plausible by the player (test checkpoint 2); travel-time formula
+  checked on a saved Request-resources page (§5).
+
+Still unverified:
+- The `map_send` fallback path on a live page (response handled defensively).
+- Paging with more than 1000 villages (the "all" view vs paged reads; unit-tested only).
+- The bot-protection path (`onError()` without argument / captcha), live.
+- Mobile on a real phone (checked headless at 360 px in `send.smoke.mjs` only).
