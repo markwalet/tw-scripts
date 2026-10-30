@@ -8,7 +8,7 @@
 import { h, injectStyle } from '../../shared/dom.js';
 import { fill, plural } from '../core/i18n.js';
 import { fmt, hm, hms } from '../core/plan-view.js';
-import { requestPayload, transportPayload, fallbackRows } from '../core/send.js';
+import { requestPayload, transportPayload, fallbackRows, checkCard, failureRecord } from '../core/send.js';
 import { RES } from '../core/world-config.js';
 
 /** Click lock after each send (approved-scripts pattern): holding Enter = one send per lock. */
@@ -33,6 +33,7 @@ const CSS = `
 .pp-root .pp-card>.btn{grid-column:2;grid-row:1/span 3;align-self:start}
 .pp-root .pp-card.pp-done{opacity:.45}
 .pp-root .pp-badge{background:#5c8a3a;color:#fff;font-weight:bold;padding:1px 6px;border-radius:8px;font-size:11px}
+.pp-root .pp-short{color:#b5482b;font-size:11px}
 .pp-root .pp-res{white-space:nowrap}
 .pp-root .pp-res .icon{margin-right:2px}
 .pp-root textarea{width:100%;height:120px;font:11px monospace;margin-top:6px}
@@ -55,10 +56,15 @@ const CSS = `
  *   | { status: 'error' }
  *   | { status: 'done', plan: PlanView, detail: { merchants: number, academies: number, villages: number },
  *       target: { x: number, stored: number, packages: number, missing: number } | null, warnings: string[],
- *       transports: import('../core/solver.js').Transport[], places: Map<number, { name: string, x: number, y: number }> }} View
+ *       transports: Transport[], cost: number[],
+ *       places: Map<number, { name: string, x: number, y: number, wood?: number, stone?: number, iron?: number, merchantsAvailable?: number }> }} View
  */
+/** @typedef {import('../core/solver.js').Transport} Transport */
 /** @typedef {import('../core/send.js').Outcome} Outcome */
 /** @typedef {import('../core/send.js').Row} Row */
+/** @typedef {import('../core/send.js').Left} Left */
+/** @typedef {ReturnType<typeof checkCard>} Check */
+/** What a click sends, kept for the failure record. @typedef {{ action: 'call' | 'map_send', target: number, planned: Transport[], sent: Transport[] }} Req */
 
 /**
  * @param {{
@@ -71,9 +77,10 @@ const CSS = `
  *   onCalculate: () => void,
  *   post: (action: 'call' | 'map_send', village: number, data: Record<string, number>) => Promise<Outcome>,
  *   settingsPanel: { element: () => HTMLElement, close: () => void },
+ *   onFailure: (f: import('../core/send.js').Failure) => void,
  * }} deps
  */
-export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate, post, settingsPanel }) {
+export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate, post, settingsPanel, onFailure }) {
   injectStyle('pp-style', CSS);
   const host = h('div');
   let shown = false;
@@ -85,9 +92,11 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   // Sending state of the current plan; replaced whenever a new view arrives (or the list
   // switches to the fallback), so answers to requests of an old list are ignored.
   // rows: null = one card per target (Request resources), else the fallback list.
-  // status: 'pending' = clicked, no answer yet; 'sent' = the game confirmed it.
-  /** @returns {{ rows: Row[] | null, status: Map<number | string, 'pending' | 'sent' | 'failed'>, failure: Outcome | null, locked: boolean }} */
-  const fresh = () => ({ rows: null, status: new Map(), failure: null, locked: false });
+  // status: 'pending' = clicked, no answer yet; 'sent' = the game confirmed it; 'skipped' =
+  // the game reports its sources no longer have it. left: what the game last reported per
+  // source (successful answers); checks: cards that differ from the plan because of it.
+  /** @returns {{ rows: Row[] | null, status: Map<number | string, 'pending' | 'sent' | 'failed' | 'skipped'>, failure: Outcome | null, locked: boolean, left: Map<number, Left>, checks: Map<number, Check> }} */
+  const fresh = () => ({ rows: null, status: new Map(), failure: null, locked: false, left: new Map(), checks: new Map() });
   let send = fresh();
   let focusNext = false;
   /** @type {HTMLElement | null} */
@@ -97,18 +106,23 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
    * One click = one request. The item moves to the bottom at once (list keeps its height,
    * so TW's centred dialog doesn't jump); all buttons lock for LOCK_MS, then focus goes to
    * the next button, so holding Enter walks down the list.
-   * @param {number | string} key @param {() => Promise<Outcome>} run
+   * @param {number | string} key @param {Req} req
    */
-  function click(key, run) {
+  function click(key, req) {
     if (send.locked || send.failure || send.status.has(key)) return;
     const s = send;
     s.locked = true;
     s.status.set(key, 'pending');
-    run().then((o) => {
+    const payload = req.action === 'call' ? requestPayload(req.sent, req.target) : transportPayload(req.sent[0]);
+    post(req.action, req.action === 'call' ? req.target : req.sent[0].from, payload).then((o) => {
+      // Evidence first (also for an answer to an old list): kept until the popup closes.
+      if (!o.ok) onFailure(failureRecord({ ...req, outcome: o, snapshot: view.status === 'done' ? view.places : new Map(), left: s.left }));
       if (s !== send) return;
       if (o.ok) {
         s.status.set(key, 'sent');
         if (o.message) toast(o.message);
+        for (const l of o.left) s.left.set(l.id, l);
+        recheck();
       } else {
         s.status.set(key, 'failed');
         s.failure ??= o;
@@ -137,6 +151,21 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   const pendingFirst = (items, key) => [...items.filter((x) => !send.status.has(key(x))), ...items.filter((x) => send.status.has(key(x)))];
   const greyed = (/** @type {number | string} */ key) => (send.status.has(key) || send.failure ? 'pp-card pp-done' : 'pp-card');
 
+  /**
+   * Check every card not sent yet against what the game reported (spec §7): a card with a
+   * short source sends what it has (marked reduced); none left = skipped, no request.
+   */
+  function recheck() {
+    if (view.status !== 'done' || send.rows) return;
+    for (const c of view.plan.cards) {
+      if (send.status.has(c.id)) continue;
+      const chk = checkCard(view.transports, c.id, send.left, { cost: view.cost, packages: c.packages });
+      if (!chk.short.length) send.checks.delete(c.id);
+      else if (chk.transports.length) send.checks.set(c.id, chk);
+      else send.status.set(c.id, 'skipped');
+    }
+  }
+
   /** Requests still waiting for the game's answer. */
   const pendingCount = () => [...send.status.values()].filter((s) => s === 'pending').length;
 
@@ -148,7 +177,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     if (view.status !== 'done' || pendingCount()) return;
     const sent = new Set([...send.status].filter(([, s]) => s === 'sent').map(([k]) => Number(k)));
     const rows = fallbackRows(view.transports, view.plan.cards.map((c) => c.id), sent, view.places);
-    send = { ...fresh(), rows };
+    send = { ...fresh(), rows, left: send.left };
     focusNext = true;
     render(view);
   }
@@ -158,7 +187,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     const { t: tr, from, to } = r;
     return h('div', { className: greyed(r.key), 'data-to': r.to.id }, [
       h('div', {}, [h('b', { text: from.name }), ` (${from.x}|${from.y}) → `, h('b', { text: to.name }), ` (${to.x}|${to.y})`]),
-      sendButton(r.key, t('send'), () => click(r.key, () => post('map_send', tr.from, transportPayload(tr)))),
+      sendButton(r.key, t('send'), () => click(r.key, { action: 'map_send', target: tr.to, planned: [tr], sent: [tr] })),
       h('div', { className: 'pp-muted' }, [
         ...resources(tr.res),
         `· ${plural(t, 'rowLine', tr.merchants, { time: hms(tr.seconds) })}`,
@@ -205,11 +234,13 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   /** @param {Card} c */
   function card(c) {
     const far = fill(t('farthest'), { name: c.farthest.name, x: c.farthest.x, y: c.farthest.y, time: hms(c.lastArrivalSeconds) });
-    const tr = view.status === 'done' ? view.transports : [];
+    const planned = view.status === 'done' ? view.transports.filter((x) => x.to === c.id) : [];
+    const chk = send.checks.get(c.id);
+    const note = send.status.get(c.id) === 'skipped' ? t('skippedNote') : chk?.mayShort ? plural(t, 'reduced', chk.mayShort) : '';
     return h('div', { className: greyed(c.id), 'data-village': c.id }, [
       h('div', {}, [h('b', { text: c.name }), ' ', h('span', { className: 'pp-muted', text: `(${c.x}|${c.y})` })]),
-      sendButton(c.id, t('request'), () => click(c.id, () => post('call', c.id, requestPayload(tr, c.id)))),
-      h('div', {}, [h('span', { className: 'pp-badge', text: plural(t, 'cardPackages', c.packages) })]),
+      sendButton(c.id, t('request'), () => click(c.id, { action: 'call', target: c.id, planned, sent: chk?.transports ?? planned })),
+      h('div', {}, [h('span', { className: 'pp-badge', text: plural(t, 'cardPackages', c.packages) }), note ? h('span', { className: 'pp-short', text: ` ${note}` }) : null]),
       h('div', { className: 'pp-muted' }, [
         ...resources(RES.map((k) => c.res[k])),
         `· ${plural(t, 'fromVillages', c.sources)} · `,

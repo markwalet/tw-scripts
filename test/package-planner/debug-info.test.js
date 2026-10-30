@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildDebugInfo } from '../../src/package-planner/core/debug-info.js';
+import { failureRecord, outcome } from '../../src/package-planner/core/send.js';
 import { loadOverview } from '../../src/package-planner/core/load-overview.js';
 import { prodEntries } from '../../src/package-planner/core/parse-prod.js';
 import { buildingsEntries } from '../../src/package-planner/core/parse-buildings.js';
@@ -37,6 +38,29 @@ test('buildDebugInfo: includes what the parsers saw, counts and the result', asy
   assert.match(out, /cost 28000\/30000\/25000/);
   assert.match(out, /plan: 7 packages, 3 targets, 9 transports, 412 merchants, longest 1393 s, solved in 41 ms/);
   assert.match(out, /trader incoming: rows 3, pages linked 0, 3 transports to 2 villages/);
+});
+
+test('buildDebugInfo: a failed send keeps the request, the answer and what each source had', () => {
+  const planned = [
+    { from: 10, to: 1, res: [28000, 30000, 0], merchants: 58, seconds: 100 },
+    { from: 11, to: 1, res: [1000, 2000, 50000], merchants: 53, seconds: 500 },
+  ];
+  const sent = [planned[0], { ...planned[1], res: [1000, 2000, 20000], merchants: 23 }];
+  const snapshot = new Map([
+    [10, { name: 'Village A', x: 500, y: 500, wood: 30000, stone: 31000, iron: 100, merchantsAvailable: 60 }],
+    [11, { name: 'Village B', x: 501, y: 500, wood: 1500, stone: 2500, iron: 52000, merchantsAvailable: 55 }],
+  ]);
+  const left = new Map([[11, { id: 11, res: [1000, 2000, 20500], merchants: 53 }]]);
+  const failure = failureRecord({
+    action: 'call', target: 1, planned, sent, snapshot, left,
+    outcome: outcome('error', 'Not enough resources available at 500|500'),
+  });
+  const out = buildDebugInfo({ failures: [failure] });
+  assert.match(out, /failed send: call to village 1 \(game\): Not enough resources available at x\|y/);
+  assert.match(out, /raw: "Not enough resources available at x\|y"/);
+  assert.match(out, /source 10: sent 28000\/30000\/0 \(58 merchants\); overview 30000\/31000\/100 \(60 merchants\); game reported none/);
+  assert.match(out, /source 11: sent 1000\/2000\/20000 \(23 merchants\), planned 1000\/2000\/50000 \(53 merchants\); overview 1500\/2500\/52000 \(55 merchants\); game reported 1000\/2000\/20500 \(53 merchants\)/);
+  for (const secret of ['Village A', 'Village B', '500|500', '501|500']) assert.equal(out.includes(secret), false, `leaked ${secret}`);
 });
 
 test('buildDebugInfo: leaks no player name, player/village ids, coordinates or tokens', async () => {
