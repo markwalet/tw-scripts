@@ -63,16 +63,16 @@ export const DEFAULTS = Object.freeze({
   /** Greedy keeps a package costing up to this much more than the next-best estimate
    *  (saves re-evaluating stale estimates; 0 = strict cheapest-first). */
   greedyTolerance: 0.3,
-  /** Local search: at most this many passes and this many tentative packages. */
+  /** Local search: at most this many passes and this many tentative packages, and only
+   *  on worlds with up to this many academies. */
   improveRounds: 3,
   improveBudget: 150,
+  improveMaxAcademies: 40,
 });
 
 const BIG = 1 << 30;
 /** Ordering penalty per merchant load for the merchant-scarce retry (see solve()). */
 const MERCHANT_PENALTY = 100000;
-/** Above this many academies, a plan already at the upper bound skips the cost polish. */
-const POLISH_MAX_ACADEMIES = 20;
 
 /**
  * Plan transports that complete as many packages as possible (then: fewest
@@ -206,8 +206,21 @@ function optimise(model, penalty) {
     return net.resolve();
   };
 
+  /** Lower bound on academy a's next package: every missing load at its cheapest path. */
+  const lowerBound = (/** @type {number} */ a) => {
+    let lb = 0;
+    for (let k = 0; k < 3; k++) {
+      const units = deficit(a, n[a] + 1, k) - deficit(a, n[a], k);
+      if (units) lb += units * net.cheapestPath(D(a, k));
+    }
+    return lb;
+  };
+
   // Greedy: cheapest next package, evaluated lazily (try it; keep it if it's still the
-  // cheapest estimate, else roll back with its now-exact cost).
+  // cheapest estimate, else roll back with its now-exact cost). Before trying a stale
+  // estimate, a cheap lower bound may already show it's not the cheapest (or impossible).
+  let epoch = 0;
+  const seen = new Array(academies.length).fill(-1);
   const fill = () => {
     while (total < o.maxPackages && attempts < budget) {
       let best = -1;
@@ -218,6 +231,13 @@ function optimise(model, penalty) {
         else second = Math.min(second, key[a]);
       }
       if (best < 0) return;
+      if (seen[best] < epoch) {
+        seen[best] = epoch;
+        const lb = lowerBound(best);
+        if (lb === Infinity) { alive[best] = false; continue; }
+        if (lb > key[best]) key[best] = lb;
+        if (lb > second * (1 + o.greedyTolerance)) continue;
+      }
       const cp = net.checkpoint();
       const before = net.totalCost;
       const ok = step(best, +1);
@@ -225,13 +245,14 @@ function optimise(model, penalty) {
       const cost = net.totalCost - before;
       if (ok && cost <= second * (1 + o.greedyTolerance)) {
         net.commit();
+        epoch++;
         key[best] = cost;
         if (n[best] >= info[best].max) alive[best] = false;
       } else {
         net.rollback(cp);
         n[best]--;
         total--;
-        if (ok) key[best] = cost;
+        if (ok) { key[best] = cost; seen[best] = epoch; }
         else alive[best] = false;
       }
     }
@@ -240,10 +261,9 @@ function optimise(model, penalty) {
 
   // Local search: take one package away from an academy and refill greedily. Keep the
   // result if it has more packages, or as many for fewer resource-hours. Bounded by a
-  // budget of tentative packages; at the upper bound only the cost can improve, which is
-  // worth the time on small worlds only.
-  const polish = total < model.bound || academies.length <= POLISH_MAX_ACADEMIES;
-  budget = polish ? attempts + o.improveBudget : 0;
+  // budget of tentative packages. It pays off on small and mid-size worlds (up to +10% on
+  // merchant-scarce ones); on big worlds each refill is slow and the spike measured no gain.
+  budget = academies.length <= o.improveMaxAcademies ? attempts + o.improveBudget : 0;
   for (let round = 0, improved = true; improved && round < o.improveRounds && attempts < budget; round++) {
     improved = false;
     for (let a = 0; a < academies.length && attempts < budget; a++) {
@@ -252,6 +272,7 @@ function optimise(model, penalty) {
       const saved = { n: [...n], key: [...key], alive, total, cost: net.totalCost };
       step(a, -1);
       alive = n.map((x, i) => i !== a && x < info[i].max);
+      epoch++;
       fill();
       if (total > saved.total || (total === saved.total && net.totalCost < saved.cost)) {
         net.commit();
@@ -344,6 +365,7 @@ class FlowNetwork {
     /** Undo log: triples (array id, index, old value). */
     /** @type {number[]} */ this.log = [];
     this.open = 0;
+    this.lastDist = 0;
   }
 
   /** @param {number} u @param {number} v @param {number} cap @param {number} cost */
@@ -458,6 +480,13 @@ class FlowNetwork {
     }
   }
 
+  /** Cost of the cheapest path from any supply into `node` (Infinity if none). */
+  cheapestPath(/** @type {number} */ node) {
+    const before = this.pi[node];
+    const t = this._search(node, false);
+    return t < 0 ? Infinity : this.lastDist - this.pi[t] + before;
+  }
+
   /**
    * Dijkstra on reduced costs. Forward from an excess to S or the nearest unmet demand;
    * backward from an unmet demand to S or the nearest excess. Backward keeps the search
@@ -497,6 +526,7 @@ class FlowNetwork {
       }
     }
     if (target < 0) return -1;
+    this.lastDist = dT;
     // Potentials: π += min(dist, dT) forward (−= backward). Only differences matter, so
     // the dT every other node would get is left out and only nodes closer than dT move.
     for (const v of touched) if (dist[v] < dT) this._set(1, v, pi[v] + (forward ? dist[v] - dT : dT - dist[v]));

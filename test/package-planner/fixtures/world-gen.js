@@ -80,10 +80,18 @@ export function generateTinyWorld(seed) {
     fill: 0.3 + r() * 0.5,
     round: 100,
   });
+  // Sprinkle the less common inputs: villages outside the sender group, transports already
+  // on the way, production eating into warehouse room.
+  for (const v of world.villages) {
+    if (r() < 0.15) v.sender = false;
+    if (v.academy && r() < 0.3) v.inflight = [0, 0, 0].map(() => Math.round(r() * 30) * 100);
+    if (r() < 0.3) v.production = [0, 0, 0].map(() => Math.round(r() * 2000));
+  }
   const options = {
     cost: [3000, 4000, 2000],
     maxTravelSeconds: r() < 0.5 ? Infinity : 4 * 360,
     reserve: r() < 0.3 ? [1000, 0, 500] : [0, 0, 0],
+    keepMerchants: r() < 0.2 ? 2 : 0,
   };
   return { world, options };
 }
