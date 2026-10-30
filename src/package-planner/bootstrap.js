@@ -120,7 +120,7 @@ async function calculate() {
     const warnings = [...config.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
     let target = null;
     const x = settings.nobles;
-    const academy = x && [...buildings.byId].find(([, level]) => level > 0);
+    const academy = x && [...academyLevels].find(([, level]) => level > 0);
     if (academy) {
       const a = parseAcademy(await tw.fetchText(tw.academyUrl(academy[0])));
       if (a) target = { x, stored: a.stored, ...nobleTarget(x, a.price, a.stored) };
