@@ -6,7 +6,7 @@ import * as tw from './adapter/tw.js';
 import { installResync } from './adapter/clock.js';
 import { load, save } from './core/settings.js';
 import { resolveLang, makeTranslator } from './core/i18n.js';
-import { createQueue } from './core/queue.js';
+import { createQueue } from './shared/queue.js';
 import { createSnipeBar } from './ui/snipe-bar.js';
 import { createIncomings } from './ui/incomings.js';
 import { createSettingsPanel } from './ui/settings-panel.js';
