@@ -96,12 +96,14 @@ async function calculate() {
     report.prod = prod;
     report.buildings = buildings;
     const villages = [...prod.byId.values()];
-    const storable = storableNow(villages, buildings.byId, config.packageCost);
+    const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
+    const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
+    const storable = storableNow(villages, academyLevels, config.packageCost);
     report.result = storable;
 
     popup.render({ status: 'calculating' });
     await afterPaint();
-    const input = solverInput({ villages, academyLevels: buildings.byId, config });
+    const input = solverInput({ villages, academyLevels, mineLevels, config });
     const t0 = performance.now();
     const plan = solve(input.world, input.options);
     const ms = Math.round(performance.now() - t0);
