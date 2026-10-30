@@ -10,6 +10,10 @@
 // Review fixes: TribalWars.post throwing is never re-sent; the fallback waits for open
 // requests and offers unconfirmed targets; an open settings input survives re-renders;
 // a cached config keeps its time; a failed start retries on Calculate; two runs share 5/s.
+// #16 (stubbed game with real per-source stock): precheck = after a successful answer the
+// next card whose source the game reports short is trimmed/marked before its send;
+// failure-record = a failed send leaves the request, answer and per-source numbers in
+// "Copy debug info", also after Recalculate.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -68,9 +72,39 @@ function stubs(fx, scenario) {
     const text = url.includes('get_config') ? fx.config : url.includes('mode=prod') ? fx.prod : url.includes('mode=buildings') ? fx.buildings : url.includes('screen=snob') ? fx.academy : '';
     return { ok: true, status: 200, text: async () => text };
   };
+  window.__clip = null;
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (s) => { window.__clip = s; } } });
+  // `stock`: like the game, a source's REAL stock (may be below the overview snapshot):
+  // `call` fails with the game's message when a source has less, else it answers with
+  // transport_info (resources_left + traders_free) for every source of the request.
+  const stock = new Map(Object.entries(scenario.stock || {}).map(([id, s]) => [Number(id), { res: [9e5, 9e5, 9e5], merchants: 46, ...s }]));
+  const real = (id) => { if (!stock.has(id)) stock.set(id, { res: [9e5, 9e5, 9e5], merchants: 46 }); return stock.get(id); };
+  function game(data) {
+    const req = new Map();
+    for (const [k, v] of Object.entries(data)) {
+      const m = /^resource\[(\d+)\]\[(\w+)\]$/.exec(k);
+      if (!m) continue;
+      const r = req.get(+m[1]) || [0, 0, 0];
+      r[['wood', 'stone', 'iron'].indexOf(m[2])] = v;
+      req.set(+m[1], r);
+    }
+    const loads = (r) => Math.ceil((r[0] + r[1] + r[2]) / 1000);
+    if ([...req].some(([id, r]) => r.some((n, i) => n > real(id).res[i]) || loads(r) > real(id).merchants)) return null;
+    return { success: 'The resources were shipped', transport_info: [...req].map(([id, r]) => {
+      const s = real(id);
+      s.res = s.res.map((n, i) => n - r[i]);
+      s.merchants -= loads(r);
+      return { village_id: id, resources_left: { wood: s.res[0], stone: s.res[1], iron: s.res[2] }, needed_trader_capacity: loads(r) * 1000, traders_total: '46', traders_free: s.merchants };
+    }) };
+  }
   window.TribalWars = {
     post(screen, params, data, onSuccess, onError) {
       const n = window.__posts.push({ screen, params, data });
+      if (scenario.stock) {
+        const answer = game(data);
+        setTimeout(() => (answer ? onSuccess(answer) : onError('Not enough resources available')), 50);
+        return;
+      }
       if (scenario.throwAt === n) throw new Error('TribalWars.post broke'); // TW changed: throws before sending
       const slow = scenario.slowAt === n;
       const fail = scenario.failAt === n || (slow && scenario.slowKind === 'game');
@@ -203,6 +237,48 @@ async function driver(scenario) {
       check('collapsed line names the groups', $$('.pp-chipline span')[0].textContent.endsWith('Senders → Academies'), $$('.pp-chipline span')[0].textContent);
       throw 'done';
     }
+    if (scenario.stock) {
+      // Plan of the 4-cluster fixture, card order 103 403 305 105 205 203 405; source 301
+      // ships 10,813 iron into 305, 10,813 into 205, 110 into 203 and 813 into 405.
+      const sendAll = async (n) => { for (let i = 0; i < n; i += 1) { await sleep(300); sendButtons()[0].click(); } await sleep(300); };
+      const card = (id) => $$(`.pp-card[data-village="${id}"]`)[0];
+      const payload = (to) => window.__posts.find((p) => String(p.params.village) === to)?.data;
+      check('card order of the fixture plan', ids().join() === '103,403,305,105,205,203,405', ids());
+      if (scenario.name === 'precheck') {
+        await sendAll(3); // 103, 403, 305: the game now reports 301 has 5,300 iron left
+        const reduced = $$('.pp-card').filter((c) => /reduced/i.test(c.textContent)).map((c) => c.getAttribute('data-village'));
+        check('before the next send, the card whose source the game reports short says so', reduced.join() === '205', reduced);
+        check('reduced card names the packages that may be short', /1 package may be short/.test(card('205').textContent), card('205').textContent);
+        await sendAll(2); // 105, 205: 301 now has 300 iron left
+        check('next short card marked before its send', /reduced/i.test(card('405').textContent) && !/reduced/i.test(card('203').textContent), [card('405').textContent, card('203').textContent]);
+        await sendAll(2); // 203, 405
+        check('one request per click, no failure', window.__posts.length === 7 && !$$('.pp-error').length, { posts: window.__posts.length, err: $$('.pp-error').map((e) => e.textContent) });
+        const p205 = payload('205');
+        check('short source trimmed to what it has, whole merchant loads', p205['resource[301][iron]'] === 5000 && p205['resource[204][wood]'] === 3894, p205);
+        check('source with what is planned is not trimmed (110 iron of 300 left)', payload('203')['resource[301][iron]'] === 110, payload('203'));
+        const p405 = payload('405');
+        check('source left with less than one load drops out of the card', !('resource[301][iron]' in p405) && p405['resource[401][iron]'] === 5000, p405);
+        check('all cards sent', $$('.pp-card').every((c) => c.textContent.includes('✓ Sent')), ids());
+      } else {
+        await sendAll(5); // 103, 403, 305, 105 ok; 205: source 204 really has 1,000 wood (overview: 30,879)
+        const err = $$('.pp-error').map((e) => e.textContent).join(' ');
+        check('the game\'s failure is shown', err.includes('Not enough resources available'), err);
+        $$('.pp-actions button').find((b) => b.textContent === 'Copy debug info').click();
+        await sleep(100);
+        const dbg = window.__clip || '';
+        check('debug info: the failed request and the game\'s message', dbg.includes('failed send: call to village 205 (game): Not enough resources available'), dbg);
+        check('debug info: raw answer', dbg.includes('raw: "Not enough resources available"'), dbg);
+        check('debug info: source never reported: sent amounts + overview snapshot', dbg.includes('source 204: sent 3894/0/0 (4 merchants); overview 30879/60779/719 (14 merchants); game reported none'), dbg);
+        check('debug info: source reported by an earlier answer', dbg.includes('source 301: sent 0/0/10813 (11 merchants); overview 33140/44720/50294 (46 merchants); game reported 900000/900000/889187 (35 merchants)'), dbg);
+        check('debug info: no village names or coordinates', !/Village|\d{3}\|\d{3}/.test(dbg), dbg);
+        $$('.pp-calc button')[0].click(); // a new plan: the record stays until the popup closes
+        await until(() => $$('.pp-card').length && !$$('.pp-calc button')[0].disabled);
+        $$('.pp-actions button').find((b) => b.textContent === 'Copy debug info').click();
+        await sleep(100);
+        check('debug info keeps the failure after Recalculate', (window.__clip || '').includes('failed send: call to village 205'));
+      }
+      throw 'done';
+    }
     const before = ids();
     check('several cards', before.length >= 3, before);
     check('focus on the first send button after Calculate', document.activeElement === sendButtons()[0]);
@@ -282,6 +358,10 @@ const scenarios = [
   { name: 'config-cache' },
   { name: 'config-fails', configFails: 2 },
   { name: 'run-twice', twice: true },
+  // #16: the real stock of 301 is below the overview (16,113 iron, not 50,294).
+  { name: 'precheck', stock: { 301: { res: [9e5, 9e5, 16113] } } },
+  // #16: 204 really has 1,000 wood (overview 30,879): card 205 fails, evidence kept.
+  { name: 'failure-record', stock: { 204: { res: [1000, 9e5, 9e5] } } },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));
 let failed = 0;

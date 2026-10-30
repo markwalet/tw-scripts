@@ -55,6 +55,20 @@ rows. No retry or captcha logic. The player refreshes, solves the captcha and ru
 script again; in-flight transports count as already arrived (§4), so the new plan picks
 up where the old one stopped.
 
+**Live observation (enc1, first full run):** card 15 of 51 failed with the game's "Not
+enough resources available" after 14 successful Request-resources clicks; the evidence was
+lost on the refresh. A solver fuzz run (400 generated worlds) never ships more than a source
+holds, so the overview snapshot and the source's real stock at click time diverged (cause
+unknown). Hence (#16):
+- **Evidence is kept automatically.** Every failed send adds a record to "Copy debug info"
+  (last 5, until the popup closes; survives Recalculate): action + target village id, the
+  game's message and raw answer (scrubbed; an HTTP error keeps only its status), and per
+  source village id: what was sent (plus the plan's amounts when the pre-check trimmed
+  them), the overview snapshot's resources + merchants, and the latest `resources_left` /
+  `traders_free` the game reported for it in earlier successful answers (or `none`).
+  Village ids only: no names, coordinates, player ids or tokens.
+- **The game's own numbers are checked before each send** (§7).
+
 ## 2. Preconditions (refuse with a clear message otherwise)
 
 - **Premium account** (`window.premium`) — the data comes from premium overviews. Always
@@ -319,6 +333,20 @@ Export/import and schema migration follow timetool2's `settings.js`.
   bot protection (`onError()` without argument), no answer within 10 s (TW calls no
   callback on 429/503). Any failure greys out the rest. Smoke test:
   `node test/package-planner/send.smoke.mjs` (headless Chrome, stubbed `TribalWars.post`).
+- **Pre-check with the game's numbers (#16, `checkCard` in `core/send.js`).** A successful
+  `call` answers with `transport_info[]` per source (`village_id`, `resources_left`,
+  `traders_free`; verified live). The popup keeps the latest per source and, after each
+  answer, checks every card not sent yet. A source short on resources or merchants sends
+  what it has, in whole merchant loads (excess off its largest share first: small amounts
+  are the package-completing top-ups); less than one load drops it from the card. The
+  card then says `Reduced: N packages may be short` (N = Σ resources cut ÷ package cost,
+  capped at the card's packages) and its one click sends the trimmed body. No source left
+  = the card is skipped (`– Skipped`, greyed, moved down, no request). No extra request:
+  only answers already received are used, so a card clicked while an earlier answer is
+  still open is checked against older numbers. Reserves are not re-applied to the game's
+  numbers (the check only stops a request the game would refuse). The fallback rows
+  (`map_send`, answer shape unverified) are not pre-checked. Smoke scenarios `precheck`
+  and `failure-record` (stubbed game with real per-source stock below the overview).
 
 ## 8. Out of scope
 
