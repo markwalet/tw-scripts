@@ -220,6 +220,47 @@ test("production margin: the plan's own longest arrival counts, not the farthest
   assert.deepEqual(plan.transports.map((t) => t.from), [2]);
 });
 
+test("counting production: the target's own production until its last arrival replaces part of the transport", () => {
+  // Iron short by a whole package (25k); the only source is 5 fields away (1800 s) and the
+  // academy makes 10k iron/hour: 5k of it is there when the transport arrives.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [28000, 30000, 0], 0, { production: [0, 0, 10000] }),
+      village(2, 503, 504, [90000, 90000, 90000]),
+    ],
+  };
+  const off = solveValid(world);
+  assert.deepEqual(off.transports, [{ from: 2, to: 1, res: [0, 0, 25000], merchants: 25, seconds: 1800 }]);
+  const on = solveValid(world, { countProduction: true });
+  assert.equal(on.packages, 1);
+  assert.deepEqual(on.transports, [{ from: 2, to: 1, res: [0, 0, 20000], merchants: 20, seconds: 1800 }]);
+});
+
+test('counting production: when it covers the whole shortfall, one load of the last delivery stays', () => {
+  // 2k iron short; 5k is made during the 1800 s trip. Without any transport there is no
+  // arrival to count production until, so one load of the farthest delivery is kept.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [28000, 30000, 23000], 0, { production: [0, 0, 10000] }),
+      village(2, 503, 504, [0, 0, 90000]),
+    ],
+  };
+  assert.deepEqual(solveValid(world).transports.map((t) => t.res), [[0, 0, 2000]]);
+  assert.deepEqual(solveValid(world, { countProduction: true }).transports.map((t) => t.res), [[0, 0, 1000]]);
+});
+
+test('counting production: random worlds with production stay valid and never lose packages', () => {
+  let gained = 0;
+  for (let seed = 1; seed <= 400; seed++) {
+    const { world, options } = generateTinyWorld(seed);
+    const off = solveValid(world, options);
+    const on = solveValid(world, { ...options, countProduction: true });
+    assert.ok(on.packages >= off.packages, `seed ${seed}: ${on.packages} < ${off.packages}`);
+    if (on.packages > off.packages) gained++;
+  }
+  assert.ok(gained > 0, 'production never added a package');
+});
+
 test('villages outside the sender group never send', () => {
   const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000], 100, { sender: false })] };
   assert.equal(solveValid(world).packages, 0);
