@@ -10,6 +10,7 @@
 
 import { parseHtml, find, findAll, textOf, childElements, hasClass, intOf, is } from '../../shared/html.js';
 import { groupMenu, headerColumns, headerVillageCount, pageNumbers, rowShape } from './overview.js';
+import { RES } from './world-config.js';
 
 /** @typedef {import('../../shared/html.js').El} El */
 
@@ -20,8 +21,6 @@ import { groupMenu, headerColumns, headerVillageCount, pageNumbers, rowShape } f
  *   storageMax: number, merchantsAvailable: number, merchantsTotal: number,
  * }} ProdVillage
  */
-
-const RES = /** @type {const} */ (['wood', 'stone', 'iron']);
 
 /**
  * @param {string} html
@@ -104,7 +103,6 @@ export function parseProd(html) {
     warnings,
     structure: {
       tableFound: true,
-      headerKeys: Object.keys(cols),
       columns: cols,
       rows: rows.length,
       firstRow: rows[0] ? rowShape(rows[0]) : null,

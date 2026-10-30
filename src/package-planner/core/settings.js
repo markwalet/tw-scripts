@@ -6,6 +6,7 @@
 import { createSettingsStore } from '../../shared/settings-store.js';
 import { fill, plural } from './i18n.js';
 import { fmt, hm, hms } from './plan-view.js';
+import { RES } from './world-config.js';
 
 /**
  * @typedef {{
@@ -106,7 +107,7 @@ export function readForm(f, current) {
     return keep;
   };
   const maxTravelSeconds = take('maxTravel', parseDuration(f.maxTravel.trim()), current.maxTravelSeconds);
-  const reserve = /** @type {const} */ (['wood', 'stone', 'iron']).map((k, i) => take(k, parseCount(f[k].trim()), current.reserve[i]));
+  const reserve = RES.map((k, i) => take(k, parseCount(f[k].trim()), current.reserve[i]));
   const keepMerchants = take('keepMerchants', parseCount(f.keepMerchants.trim()), current.keepMerchants);
   const bufferPct = take('bufferPct', parsePct(f.bufferPct.trim()), current.bufferPct);
   const nobles = take('nobles', parseCount(f.nobles.trim()), current.nobles) || null;

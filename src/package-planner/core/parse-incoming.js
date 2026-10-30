@@ -10,11 +10,11 @@
 
 import { parseHtml, find, findAll, textOf, hasClass, intOf, is } from '../../shared/html.js';
 import { pageNumbers, rowShape } from './overview.js';
+import { RES } from './world-config.js';
 
 /** @typedef {[number, number, number]} Res */
 /** @typedef {import('../../shared/html.js').El} El */
 
-const RES = ['wood', 'stone', 'iron'];
 const VILLAGE_LINK = /[?&]screen=info_village\b.*?[?&]id=(\d+)/;
 
 /** @param {string} html */

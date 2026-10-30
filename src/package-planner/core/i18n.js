@@ -24,6 +24,7 @@ const STRINGS = {
     nobleTarget: '{n} nobles = {packages} packages, {missing} still missing',
     nobleTargetOne: '1 noble = {packages} packages, {missing} still missing',
     noAcademyPage: 'Academy page not readable: no noble target',
+    notInBuildings: '{n} villages are missing from the Buildings overview',
     lastArrival: 'Last arrival in {time} · {sent} of {total} sent',
     planDetail: '{merchants} merchants · {academies} academy villages · {villages} villages read',
     noTransports: 'No transports needed: your academies can store these packages right now.',

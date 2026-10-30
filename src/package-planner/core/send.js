@@ -3,9 +3,9 @@
 // One click = one request: Request resources fills one target from all its sources; the
 // fallback (market "send") is one request per transport. Never one request per merchant.
 
-/** @typedef {import('./solver.js').Transport} Transport */
+import { RES } from './world-config.js';
 
-const KEYS = /** @type {const} */ (['wood', 'stone', 'iron']);
+/** @typedef {import('./solver.js').Transport} Transport */
 
 /**
  * Body of the market's Request resources action (`ajaxaction=call`, posted with
@@ -20,7 +20,7 @@ export function requestPayload(transports, target) {
   const body = { target_id: 0 };
   for (const t of transports) {
     if (t.to !== target) continue;
-    KEYS.forEach((k, i) => { body[`resource[${t.from}][${k}]`] = t.res[i]; });
+    RES.forEach((k, i) => { body[`resource[${t.from}][${k}]`] = t.res[i]; });
   }
   return body;
 }

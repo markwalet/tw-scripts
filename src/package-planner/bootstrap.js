@@ -6,7 +6,7 @@
 // solver once (the plan is a snapshot) and shows it as cards.
 
 import * as tw from './adapter/tw.js';
-import { resolveLang, makeTranslator } from './core/i18n.js';
+import { resolveLang, makeTranslator, fill } from './core/i18n.js';
 import { parseWorldConfig } from './core/world-config.js';
 import { checkPreconditions } from './core/preconditions.js';
 import { loadOverview } from './core/load-overview.js';
@@ -34,12 +34,13 @@ tw.register(t('scriptName'), true, AUTHOR.name, AUTHOR.email);
 
 /** Everything the debug summary may show; filled as we go (whitelisted in buildDebugInfo). */
 /** @type {Parameters<typeof buildDebugInfo>[0]} */
-const report = { env: tw.env() };
+const env = tw.env();
+const report = { env };
 /** @type {ReturnType<typeof parseWorldConfig> | null} */
 let config = null;
 let busy = false;
 /** Saved per world (localStorage); edited in the popup, used by the next Calculate. */
-let settings = settingsStore.load(report.env?.world ?? '');
+let settings = settingsStore.load(env.world);
 
 const popup = createPopup({
   t,
@@ -53,7 +54,7 @@ const popup = createPopup({
   settingsPanel: createSettingsPanel({
     t,
     get: () => settings,
-    save: (next) => { settings = next; settingsStore.save(report.env?.world ?? '', next); },
+    save: (next) => { settings = next; settingsStore.save(env.world, next); },
   }),
 });
 
@@ -76,25 +77,27 @@ const afterPaint = () => new Promise((resolve) => {
   setTimeout(go, 100);
 });
 
+/**
+ * Show the refusal when the planner can't work (spec §2). True = refused.
+ * @param {boolean | null} gold  null = not known yet / config unreadable
+ */
+function refused(gold) {
+  const pre = checkPreconditions({ premium: env.premium, gold });
+  if (pre.ok) return false;
+  report.refused = pre.reason;
+  popup.render({ status: 'refused', reason: pre.reason });
+  return true;
+}
+
 async function start() {
   popup.render({ status: 'starting' });
-  const env = report.env || tw.env();
   try {
-    if (!env.premium) {
-      report.refused = 'noPremium';
-      popup.render({ status: 'refused', reason: 'noPremium' });
-      return;
-    }
+    if (refused(null)) return; // before any request
     const xml = await tw.worldConfigXml();
     config = parseWorldConfig(xml);
     report.config = config;
     if (!config.warnings.length) tw.cacheWorldConfig(xml);
-    const pre = checkPreconditions({ premium: env.premium, gold: config.gold });
-    if (!pre.ok) {
-      report.refused = pre.reason;
-      popup.render({ status: 'refused', reason: pre.reason });
-      return;
-    }
+    if (refused(config.gold)) return;
     popup.render({ status: 'ready' });
   } catch (err) {
     fail(err);
@@ -104,7 +107,6 @@ async function start() {
 async function calculate() {
   if (busy || !config) return;
   busy = true;
-  const env = report.env || tw.env();
   try {
     popup.render({ status: 'loading' });
     const prodOf = (group = 0) =>
@@ -126,7 +128,7 @@ async function calculate() {
     report.incoming = incoming;
     // The group list for the dropdowns comes with the Production overview (no extra request).
     if (prod.groups?.length) settings = { ...settings, groups: prod.groups };
-    settingsStore.save(report.env?.world ?? '', settings);
+    settingsStore.save(env.world, settings);
     const villages = [...prod.byId.values()];
     const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
     const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
@@ -156,7 +158,7 @@ async function calculate() {
     };
 
     warnings.push(...input.warnings);
-    if (storable.notInBuildings) warnings.push(`${storable.notInBuildings} villages are missing from the Buildings overview`);
+    if (storable.notInBuildings) warnings.push(fill(t('notInBuildings'), { n: storable.notInBuildings }));
     popup.render({
       status: 'done',
       plan: view,
