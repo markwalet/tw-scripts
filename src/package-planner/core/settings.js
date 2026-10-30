@@ -13,19 +13,20 @@ import { fmt, hm, hms } from './plan-view.js';
  *   reserve: [number, number, number], wood, clay, iron kept in every sender
  *   keepMerchants: number,
  *   bufferPct: number,                 warehouse buffer (on top of the production margin)
+ *   nobles: number | null,             collect for this many new nobles; null = as many packages as possible
  * }} Settings
  */
 
 /** @returns {Settings} */
-const defaults = () => ({ maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2 });
+const defaults = () => ({ maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2, nobles: null });
 
 /** A non-negative finite number, else the fallback. @param {unknown} v @param {number} fallback */
 const amount = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback);
 
 /**
  * Any stored (or imported) object -> valid v1 settings: valid fields are kept, broken or
- * missing ones get their default. Later versions add their fields here (#10 groups, #11
- * noble target) and keep reading the old ones.
+ * missing ones get their default. Later versions add their fields here (#10 groups) and
+ * keep reading the old ones.
  * @param {any} raw @param {Settings} base
  * @returns {Settings}
  */
@@ -38,6 +39,7 @@ function migrate(raw, base) {
     reserve: /** @type {Settings['reserve']} */ (base.reserve.map((d, k) => Math.floor(amount(reserve[k], d)))),
     keepMerchants: Math.floor(amount(raw.keepMerchants, base.keepMerchants)),
     bufferPct: amount(raw.bufferPct, base.bufferPct),
+    nobles: Math.floor(amount(raw.nobles, 0)) || null,
   };
 }
 
@@ -45,16 +47,17 @@ export const settingsStore = createSettingsStore({ name: 'pp_settings', version:
 
 /**
  * The solver options these settings set (merged over the ones from the world config).
- * @param {Settings} s
+ * @param {Settings} s @param {number} [maxPackages]  noble target: packages still missing
  */
-export const solverOptions = (s) => ({
+export const solverOptions = (s, maxPackages = Infinity) => ({
+  maxPackages,
   maxTravelSeconds: s.maxTravelSeconds ?? Infinity,
   reserve: /** @type {Settings['reserve']} */ ([...s.reserve]),
   keepMerchants: s.keepMerchants,
   bufferPct: s.bufferPct,
 });
 
-/** @typedef {{ maxTravel: string, wood: string, stone: string, iron: string, keepMerchants: string, bufferPct: string }} FormFields */
+/** @typedef {{ maxTravel: string, wood: string, stone: string, iron: string, keepMerchants: string, bufferPct: string, nobles: string }} FormFields */
 
 /** "3:00" -> 10800 s; "" -> null; h, h:mm or h:mm:ss; anything else -> undefined. @param {string} v */
 function parseDuration(v) {
@@ -97,8 +100,9 @@ export function readForm(f, current) {
   const reserve = /** @type {const} */ (['wood', 'stone', 'iron']).map((k, i) => take(k, parseCount(f[k].trim()), current.reserve[i]));
   const keepMerchants = take('keepMerchants', parseCount(f.keepMerchants.trim()), current.keepMerchants);
   const bufferPct = take('bufferPct', parsePct(f.bufferPct.trim()), current.bufferPct);
+  const nobles = take('nobles', parseCount(f.nobles.trim()), current.nobles) || null;
   return {
-    settings: { ...current, maxTravelSeconds, reserve: /** @type {Settings['reserve']} */ (reserve), keepMerchants, bufferPct },
+    settings: { ...current, maxTravelSeconds, reserve: /** @type {Settings['reserve']} */ (reserve), keepMerchants, bufferPct, nobles },
     invalid,
   };
 }
@@ -114,11 +118,12 @@ export const formFields = (s) => ({
   iron: String(s.reserve[2]),
   keepMerchants: String(s.keepMerchants),
   bufferPct: String(s.bufferPct),
+  nobles: String(s.nobles ?? ''),
 });
 
 /**
  * The collapsed settings line: "Max 3:00 · reserve 0/0/0 · keep 0 merchants · buffer 2%".
- * Room for the group filters (#10) and the noble target (#11).
+ * Room for the group filters (#10).
  * @param {Settings} s @param {(key: string) => string} t
  */
 export function settingsLine(s, t) {
@@ -128,5 +133,5 @@ export function settingsLine(s, t) {
     fill(t('settingReserve'), { wood, stone, iron }),
     s.keepMerchants === 1 ? t('settingKeepOne') : fill(t('settingKeep'), { n: fmt(s.keepMerchants) }),
     fill(t('settingBuffer'), { pct: s.bufferPct }),
-  ].join(' · ');
+  ].concat(s.nobles ? fill(t('settingNobles'), { n: s.nobles }) : []).join(' · ');
 }

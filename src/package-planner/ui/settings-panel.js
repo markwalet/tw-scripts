@@ -68,6 +68,7 @@ export function createSettingsPanel({ t, get, save }) {
       row('reserveLabel', [...res('wood'), ...res('stone'), ...res('iron')], 'reserveHint'),
       row('keepMerchantsLabel', [input('keepMerchants', 4)]),
       row('bufferLabel', [input('bufferPct', 4)], 'bufferHint'),
+      row('noblesLabel', [input('nobles', 4)], 'noblesHint'),
     ]);
   }
 

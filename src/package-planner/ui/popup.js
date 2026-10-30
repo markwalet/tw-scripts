@@ -53,7 +53,7 @@ const CSS = `
  *   | { status: 'refused', reason: string }
  *   | { status: 'error' }
  *   | { status: 'done', plan: PlanView, detail: { merchants: number, academies: number, villages: number },
- *       stored: number | null, warnings: string[],
+ *       target: { x: number, stored: number, packages: number, missing: number } | null, warnings: string[],
  *       transports: import('../core/solver.js').Transport[], places: Map<number, { name: string, x: number, y: number }> }} View
  */
 /** @typedef {import('../core/send.js').Outcome} Outcome */
@@ -206,15 +206,17 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   function planBody(v) {
     const { summary, cards } = v.plan;
     const sentCount = [...send.status.values()].filter((s) => s === 'sent').length;
+    const g = v.target;
     const headline = [
       h('b', { text: count('storableAfter', summary.packages) }),
       summary.storableNow ? fill(t('storableSplit'), { now: fmt(summary.storableNow), added: fmt(summary.fromTransports) }) : '',
-      v.stored == null ? '' : fill(t('storedTotal'), { n: fmt(v.stored + summary.packages) }),
+      g ? fill(t('storedTotal'), { n: fmt(g.stored + summary.packages) }) : '',
       ' → ',
       storeLink(),
     ];
     return [
       h('div', { className: 'pp-summary' }, [
+        g ? h('span', { text: fill(t('nobleTarget'), { ...g, n: fmt(g.packages), m: fmt(g.missing) }) }) : null,
         h('span', {}, headline),
         cards.length
           ? h('span', { text: fill(t('lastArrival'), { time: hm(summary.lastArrivalSeconds), sent: sentCount, total: send.rows ? send.rows.length : cards.length }) })
