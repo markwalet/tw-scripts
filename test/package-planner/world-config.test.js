@@ -13,6 +13,7 @@ test('parseWorldConfig: classic world -> package cost, gold flag and speeds', ()
     packageCost: { wood: 28000, stone: 30000, iron: 25000 },
     speed: 3.6,
     unitSpeed: 0.278,
+    baseProduction: 33,
     warnings: [],
   });
 });
@@ -27,6 +28,7 @@ test('parseWorldConfig: a redirect page instead of XML -> fallback cost, unknown
   assert.equal(cfg.gold, null);
   assert.deepEqual(cfg.packageCost, { wood: 28000, stone: 30000, iron: 25000 });
   assert.match(cfg.warnings.join('\n'), /package cost not found.*28000\/30000\/25000/);
+  assert.equal(cfg.baseProduction, null);
 });
 
 test('parseWorldConfig: only the top-level <speed> counts', () => {

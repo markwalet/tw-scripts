@@ -20,7 +20,7 @@ function childNumber(parent, tag) {
 
 /**
  * @param {string} xml
- * @returns {{ gold: boolean | null, packageCost: Cost, speed: number | null, unitSpeed: number | null, warnings: string[] }}
+ * @returns {{ gold: boolean | null, packageCost: Cost, speed: number | null, unitSpeed: number | null, baseProduction: number | null, warnings: string[] }}
  */
 export function parseWorldConfig(xml) {
   const config = find(parseHtml(xml), (e) => e.tag === 'config');
@@ -46,6 +46,8 @@ export function parseWorldConfig(xml) {
     packageCost,
     speed: childNumber(config, 'speed'),
     unitSpeed: childNumber(config, 'unit_speed'),
+    /** Resources/hour of a level-1 mine at speed 1 (33 on enc1, not the classic 30). */
+    baseProduction: childNumber(config && childElements(config, 'game')[0], 'base_production'),
     warnings,
   };
 }

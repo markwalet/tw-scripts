@@ -155,6 +155,37 @@ test('several packages per academy, bounded by its warehouse minus the buffer', 
   assert.equal(solveValid(world, { cost: [24000, 24500, 24000], bufferPct: 2.1 }).packages, 3);
 });
 
+test('production during travel: an exact-fit plan that would overflow gets reduced', () => {
+  // 100k warehouse, 2% buffer: 98k room = exactly 4 packages of 24.5k clay. The trip takes
+  // 1800 s; 1000 clay/hour arrives meanwhile, so the 4th package would overflow.
+  const world = (production) => ({
+    villages: [
+      academy(1, 500, 500, [0, 0, 0], 0, { storage: 100000, production }),
+      village(2, 503, 504, [400000, 400000, 400000], 1000),
+    ],
+  });
+  const cost = [24000, 24500, 24000];
+  assert.equal(solveValid(world(undefined), { cost }).packages, 4);
+  assert.equal(solveValid(world([0, 1000, 0]), { cost }).packages, 3);
+  assert.equal(solveValid(world([0, 1000, 0]), { cost, bufferPct: 0 }).packages, 4);
+});
+
+test("production margin: the plan's own longest arrival counts, not the farthest possible source", () => {
+  // 4 packages need 97.6k clay; room is 98k − 1000/hour × trip. The near source (1 field,
+  // 360 s) fills it; a far one (50 fields, 5 h) would cost the margin 5000. Planning the
+  // margin for the far trip the plan never makes would lose a package.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [0, 0, 0], 0, { storage: 100000, production: [0, 1000, 0] }),
+      village(2, 501, 500, [400000, 400000, 400000], 1000),
+      village(3, 550, 500, [400000, 400000, 400000], 1000),
+    ],
+  };
+  const plan = solveValid(world, { cost: [24000, 24400, 24000] });
+  assert.equal(plan.packages, 4);
+  assert.deepEqual(plan.transports.map((t) => t.from), [2]);
+});
+
 test('villages outside the sender group never send', () => {
   const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000], 100, { sender: false })] };
   assert.equal(solveValid(world).packages, 0);
