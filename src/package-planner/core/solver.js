@@ -14,7 +14,9 @@
 // graph, so an early choice never strands a later package (the nearest-first starvation
 // of the old balancer, §9). An academy whose next package is infeasible drops out for good:
 // feasibility is downward closed, so it can't come back. A short local search (take one
-// package away, refill) then fixes most of what a greedy order gets wrong.
+// package away, refill) then fixes most of what a greedy order gets wrong. Last, the
+// merchants that combined loads save (one merchant carries 1000 of any mix) are credited
+// back to their sources and the greedy goes on, while that adds packages.
 
 /** @typedef {[number, number, number]} Res  wood, stone (clay), iron */
 /**
@@ -268,6 +270,21 @@ function optimise(model, penalty) {
   };
   fill();
 
+  /** Tentative: apply `change`, refill greedily; keep it if `better(before)`, else undo. */
+  const attempt = (/** @type {() => void} */ change, /** @type {(before: { total: number, cost: number }) => boolean} */ better) => {
+    const cp = net.checkpoint();
+    const saved = { n: [...n], key: [...key], alive, total, cost: net.totalCost };
+    change();
+    epoch++;
+    fill();
+    if (better(saved)) return net.commit(), true;
+    net.rollback(cp);
+    n.splice(0, n.length, ...saved.n);
+    key.splice(0, key.length, ...saved.key);
+    ({ alive, total } = saved);
+    return false;
+  };
+
   // Local search: take one package away from an academy and refill greedily. Keep the
   // result if it has more packages, or as many for fewer resource-hours. Bounded by a
   // budget of tentative packages. It pays off on small and mid-size worlds (up to +9% on
@@ -276,22 +293,8 @@ function optimise(model, penalty) {
   for (let round = 0, improved = true; improved && round < o.improveRounds && attempts < budget; round++) {
     improved = false;
     for (let a = 0; a < academies.length && attempts < budget; a++) {
-      if (!n[a]) continue;
-      const cp = net.checkpoint();
-      const saved = { n: [...n], key: [...key], alive, total, cost: net.totalCost };
-      step(a, -1);
-      alive = n.map((x, i) => i !== a && x < max[i]);
-      epoch++;
-      fill();
-      if (total > saved.total || (total === saved.total && net.totalCost < saved.cost)) {
-        net.commit();
-        improved = true;
-        continue;
-      }
-      net.rollback(cp);
-      n.splice(0, n.length, ...saved.n);
-      key.splice(0, key.length, ...saved.key);
-      ({ alive, total } = saved);
+      if (n[a] && attempt(() => { step(a, -1); alive = n.map((x, i) => i !== a && x < max[i]); },
+        (was) => total > was.total || (total === was.total && net.totalCost < was.cost))) improved = true;
     }
   }
 
@@ -324,38 +327,58 @@ function optimise(model, penalty) {
   // Read the flow back as transports; trim each academy's overshoot (< one load per
   // resource) off its farthest deliveries, so a partial last merchant only ever completes
   // a package. Nothing is dropped from the books: every planned resource is delivered.
-  /** @type {Map<string, Transport & { d: number }>} */
-  const byPair = new Map();
-  edges.forEach((e, i) => {
-    for (let k = 0; k < 3; k++) {
-      const units = net.flow(shipArcs[i][k]);
-      if (!units) continue;
-      const id = `${e.s},${e.a}`;
-      let t = byPair.get(id);
-      if (!t) {
-        t = { from: senders[e.s].id, to: academies[e.a].id, res: [0, 0, 0], merchants: 0, seconds: e.seconds, d: e.d };
-        byPair.set(id, t);
+  const readBack = () => {
+    /** @type {Map<string, Transport & { d: number, s: number }>} */
+    const byPair = new Map();
+    edges.forEach((e, i) => {
+      for (let k = 0; k < 3; k++) {
+        const units = net.flow(shipArcs[i][k]);
+        if (!units) continue;
+        const id = `${e.s},${e.a}`;
+        let t = byPair.get(id);
+        if (!t) {
+          t = { from: senders[e.s].id, to: academies[e.a].id, res: [0, 0, 0], merchants: 0, seconds: e.seconds, d: e.d, s: e.s };
+          byPair.set(id, t);
+        }
+        t.res[k] += units * U;
       }
-      t.res[k] += units * U;
-    }
-  });
-  const transports = [...byPair.values()];
-  academies.forEach((a, ai) => {
-    for (let k = 0; k < 3; k++) {
-      const into = transports.filter((t) => t.to === a.id && t.res[k] > 0);
-      const delivered = into.reduce((sum, t) => sum + t.res[k], 0);
-      let over = delivered - Math.max(0, n[ai] * c[k] - info[ai].own[k]);
-      into.sort((p, q) => q.d - p.d);
-      for (const t of into) {
-        const cut = Math.min(over, t.res[k]);
-        t.res[k] -= cut;
-        over -= cut;
+    });
+    const transports = [...byPair.values()];
+    academies.forEach((a, ai) => {
+      const into = transports.filter((t) => t.to === a.id).sort((p, q) => q.d - p.d);
+      const over = [0, 1, 2].map((k) => into.reduce((sum, t) => sum + t.res[k], 0) - Math.max(0, n[ai] * c[k] - info[ai].own[k]));
+      // All overshoot off ONE transport if one carries enough of each: those partial loads
+      // then share merchants. Else off the farthest deliveries of each resource.
+      const one = into.find((t) => t.res.every((x, k) => x >= over[k]));
+      for (let k = 0; k < 3; k++) {
+        for (const t of one ? [one] : into) {
+          const cut = Math.min(over[k], t.res[k]);
+          t.res[k] -= cut;
+          over[k] -= cut;
+        }
       }
-    }
-  });
-  const result = transports
-    .filter((t) => t.res[0] + t.res[1] + t.res[2] > 0)
-    .map(({ d, ...t }) => ({ ...t, merchants: Math.ceil((t.res[0] + t.res[1] + t.res[2]) / U) }));
+    });
+    const result = transports.filter((t) => t.res[0] + t.res[1] + t.res[2] > 0);
+    /** Merchants each source really uses: one per 1000 of COMBINED resources. */
+    const used = senders.map(() => 0);
+    for (const t of result) used[t.s] += t.merchants = Math.ceil((t.res[0] + t.res[1] + t.res[2]) / U);
+    return { result, used };
+  };
+
+  // Combined loads. The flow counts a merchant per 1000 of ONE resource, but after the trim
+  // a merchant carries 1000 of any mix (730 wood + 270 clay = 1 merchant, not 2). Credit
+  // each source the merchants that saves and let the greedy go on; keep the result only if
+  // it gained packages and every source still fits its real merchants. Repeat.
+  const avail = senders.map((v) => v.merchants - o.keepMerchants);
+  let read = readBack();
+  let next = read;
+  budget = senders.length * academies.length <= o.allPairsUpTo ? Infinity : 0;
+  while (budget && attempt(() => {
+    senders.forEach((_, s) => net.setCap(merchantArcs[s], avail[s] + net.flow(merchantArcs[s]) - read.used[s]));
+    net.resolve();
+    alive = n.map((x, i) => x < max[i]);
+  }, (was) => total > was.total && (next = readBack()).used.every((u, s) => u <= avail[s]))) read = next;
+  const result = read.result.map(({ d, s, ...t }) => t);
 
   return {
     packages: total,
@@ -364,7 +387,7 @@ function optimise(model, penalty) {
     merchants: result.reduce((sum, t) => sum + t.merchants, 0),
     longestSeconds: result.reduce((m, t) => Math.max(m, t.seconds), 0),
     resourceHours: result.reduce((sum, t) => sum + ((t.res[0] + t.res[1] + t.res[2]) * t.seconds) / 3600, 0),
-    merchantsLeft: merchantArcs.reduce((sum, arc) => sum + net.cap[arc], 0),
+    merchantsLeft: avail.reduce((sum, m, s) => sum + m - net.flow(merchantArcs[s]), 0),
   };
 }
 

@@ -145,6 +145,36 @@ test('merchants bound what a source ships; kept-home merchants never leave', () 
   assert.equal(solveValid(world(100), { keepMerchants: 18 }).packages, 0);
 });
 
+test('one merchant carries a mix of resources: the merchants that saves carry another package', () => {
+  // Each academy holds 500 wood + 500 clay, so a package needs 27.5k + 29.5k + 25k = 82k:
+  // 82 merchants, although per resource that is 28 + 30 + 25 = 83 loads. 165 merchants
+  // carry two packages (164), not one.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [500, 500, 0], 0), academy(2, 510, 500, [500, 500, 0], 0),
+      village(3, 505, 500, [100000, 100000, 100000], 165),
+    ],
+  };
+  const plan = solveValid(world);
+  assert.equal(plan.packages, 2);
+  assert.equal(plan.merchants, 164);
+});
+
+test("an academy's partial loads share one merchant even when another source ships farther", () => {
+  // The near source (60 merchants) ships 5k wood + all clay and iron; the far one only
+  // has wood (23k). The 500 wood + 500 clay over 82k come off the same transport: 82
+  // merchants, not 83.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [500, 500, 0], 0),
+      village(2, 503, 500, [100000, 100000, 100000], 60), village(3, 510, 500, [100000, 0, 0], 100),
+    ],
+  };
+  const plan = solveValid(world);
+  assert.equal(plan.packages, 1);
+  assert.equal(plan.merchants, 82);
+});
+
 test('several packages per academy, bounded by its warehouse minus the buffer', () => {
   // 100k warehouse, 2% buffer: 98k room -> 3 packages of 30k clay, not 4.
   const world = {
