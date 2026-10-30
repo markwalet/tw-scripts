@@ -132,16 +132,18 @@ function buildModel(/** @type {{ villages: Village[] }} */ world, /** @type {typ
 
   // Per academy: what it holds (in-flight counts, capped by the warehouse) and the most
   // packages its warehouse allows. Imports must fit under storage − buffer − production
-  // during the longest candidate trip (safe side; the real longest trip is shorter).
+  // during the longest candidate trip (safe side; optimise() narrows it to the plan's own
+  // longest arrival afterwards).
   const info = academies.map((a, i) => {
     const inflight = a.inflight || [0, 0, 0];
     const own = [0, 1, 2].map((k) => Math.min(a.res[k] + inflight[k], a.storage));
-    const limit = [0, 1, 2].map((k) => {
+    /** Packages that fit when transports arrive up to `seconds` from now. */
+    const fit = (/** @type {number} */ seconds) => Math.min(...[0, 1, 2].map((k) => {
       const prod = a.production ? a.production[k] : 0;
-      return Math.floor(a.storage * (1 - o.bufferPct / 100) - (prod * longest[i]) / 3600);
-    });
-    const max = Math.min(...[0, 1, 2].map((k) => Math.floor(Math.max(limit[k], own[k]) / c[k])));
-    return { own, inflightHeld: own.map((x, k) => Math.max(0, x - a.res[k])), max };
+      const limit = Math.floor(a.storage * (1 - o.bufferPct / 100) - (prod * seconds) / 3600);
+      return Math.floor(Math.max(limit, own[k]) / c[k]);
+    }));
+    return { own, inflightHeld: own.map((x, k) => Math.max(0, x - a.res[k])), max: fit(longest[i]), fit };
   });
 
   const bound = Math.min(
@@ -193,7 +195,8 @@ function optimise(model, penalty) {
   net.freeze();
 
   const n = new Array(academies.length).fill(0);
-  let alive = info.map((x) => x.max > 0);
+  const max = info.map((x) => x.max);
+  let alive = max.map((m) => m > 0);
   /** Estimated cost of each academy's next package (exact when evaluated, then stale). */
   const key = new Array(academies.length).fill(0);
   let total = 0;
@@ -253,7 +256,7 @@ function optimise(model, penalty) {
         net.commit();
         epoch++;
         key[best] = cost;
-        if (n[best] >= info[best].max) alive[best] = false;
+        if (n[best] >= max[best]) alive[best] = false;
       } else {
         net.rollback(cp);
         n[best]--;
@@ -277,7 +280,7 @@ function optimise(model, penalty) {
       const cp = net.checkpoint();
       const saved = { n: [...n], key: [...key], alive, total, cost: net.totalCost };
       step(a, -1);
-      alive = n.map((x, i) => i !== a && x < info[i].max);
+      alive = n.map((x, i) => i !== a && x < max[i]);
       epoch++;
       fill();
       if (total > saved.total || (total === saved.total && net.totalCost < saved.cost)) {
@@ -290,6 +293,32 @@ function optimise(model, penalty) {
       key.splice(0, key.length, ...saved.key);
       ({ alive, total } = saved);
     }
+  }
+
+  // Production margin, narrowed. It is circular: the margin limits the plan, and the plan
+  // sets the longest arrival. The greedy above assumed the longest CANDIDATE trip into each
+  // academy (safe). An academy now held at that cap gets the margin of its own longest
+  // planned arrival instead, and from here on only takes deliveries that arrive no later
+  // (its longer arcs close). Then the greedy goes on in the same network. Valid by
+  // construction, no second solve.
+  const horizon = new Array(academies.length).fill(-1);
+  edges.forEach((e, i) => {
+    if (shipArcs[i].some((arc) => net.flow(arc) > 0)) horizon[e.a] = Math.max(horizon[e.a], e.seconds);
+  });
+  alive = academies.map((_, a) => {
+    if (n[a] < max[a] || horizon[a] < 0) return false;
+    const m = info[a].fit(horizon[a]);
+    if (m <= max[a]) return false;
+    max[a] = m;
+    return true;
+  });
+  if (alive.some(Boolean)) {
+    edges.forEach((e, i) => {
+      if (alive[e.a] && e.seconds > horizon[e.a]) for (const arc of shipArcs[i]) net.setCap(arc, 0);
+    });
+    epoch++;
+    budget = Infinity;
+    fill();
   }
 
   // Read the flow back as transports; trim each academy's overshoot (< one load per
