@@ -399,8 +399,8 @@ Export/import and schema migration follow timetool2's `settings.js`.
   answer, checks every card not sent yet. A source short on resources or merchants sends
   what it has, in whole merchant loads (excess off its largest share first: small amounts
   are the package-completing top-ups); less than one load drops it from the card. The
-  card then says `Reduced: N packages may be short` (N = Σ resources cut ÷ package cost,
-  capped at the card's packages) and its one click sends the trimmed body. No source left
+  card then says `Reduced: N packages may be short` (N = the most packages any one
+  resource's cut covers, rounded up: a package needs all three; capped at the card's packages) and its one click sends the trimmed body. No source left
   = the card is skipped (`– Skipped`, greyed, moved down, no request). No extra request:
   only answers already received are used, so a card clicked while an earlier answer is
   still open is checked against older numbers. Reserves are not re-applied to the game's

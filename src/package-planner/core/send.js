@@ -43,7 +43,7 @@ export const transportPayload = (t) => ({ target_id: t.to, wood: t.res[0], stone
  * @param {Map<number, Left>} left
  * @param {{ cost: number[], packages: number, carry?: number }} o
  * @returns {{ transports: Transport[], short: number[], mayShort: number }}
- *   mayShort = packages that may no longer complete (Σ resources cut / package cost)
+ *   mayShort = packages that may no longer complete (the most any one resource's cut covers)
  */
 export function checkCard(transports, target, left, { cost, packages, carry = 1000 }) {
   /** @type {number[]} */
@@ -68,7 +68,8 @@ export function checkCard(transports, target, left, { cost, packages, carry = 10
     a.forEach((n, i) => { cut[i] += t.res[i] - n; });
     return loads ? [{ ...t, res: /** @type {[number, number, number]} */ (a), merchants: loads }] : [];
   });
-  const mayShort = Math.min(packages, cut.reduce((s, n, i) => s + (cost[i] ? Math.ceil(n / cost[i]) : 0), 0));
+  // A package needs all three resources: the resource cut the most packages' worth decides.
+  const mayShort = Math.min(packages, Math.max(...cut.map((n, i) => (cost[i] ? Math.ceil(n / cost[i]) : 0))));
   return { transports: out, short, mayShort };
 }
 

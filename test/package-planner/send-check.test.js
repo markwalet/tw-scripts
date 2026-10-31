@@ -37,3 +37,10 @@ test('checkCard: a source with less than one merchant load drops out; no source 
   const r = checkCard(transports, 2, left([{ id: 12, res: [0, 0, 900], merchants: 4 }]), { cost, packages: 1 });
   assert.deepEqual(plain(r), { transports: [], short: [12], mayShort: 1 });
 });
+
+test('checkCard: packages that may be short = the most any one resource cut covers, not their sum', () => {
+  // 10 is 1,000 wood and 1,000 clay short: one package short, not two.
+  const r = checkCard(transports, 1, left([{ id: 10, res: [27000, 29000, 0], merchants: 58 }]), { cost, packages: 3 });
+  assert.deepEqual(plain(r).transports[0], [10, [27000, 29000, 0], 56]);
+  assert.equal(r.mayShort, 1);
+});
