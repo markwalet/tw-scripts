@@ -153,7 +153,7 @@ function solveOnce(/** @type {{ villages: Village[] }} */ world, /** @type {type
   if (best.packages < model.bound && best.merchantsLeft < 0.05 * model.merchants) {
     const alt = optimise(model, MERCHANT_PENALTY);
     work += alt.work;
-    if (alt.packages > best.packages || (alt.packages === best.packages && alt.resourceHours < best.resourceHours)) best = alt;
+    if (better(alt, best)) best = alt;
   }
   const { merchantsLeft, work: _, ...plan } = best;
   return { plan, work };
