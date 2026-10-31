@@ -414,8 +414,9 @@ function optimise(model, penalty) {
     max[a] = m;
     return true;
   });
-  alive = raised;
-  if (alive.some(Boolean)) {
+  // A copy: the greedy marks academies done in `alive`; `raised` stays the ones narrowed here.
+  alive = [...raised];
+  if (raised.some(Boolean)) {
     edges.forEach((e, i) => {
       if (raised[e.a] && e.seconds > horizon[e.a]) for (const arc of shipArcs[i]) net.setCap(arc, 0);
     });
