@@ -115,21 +115,26 @@ export function failureRecord({ action, target, planned, sent, outcome: o, snaps
 /** @typedef {{ key: string, from: Place, to: Place, t: Transport }} Row */
 
 /**
- * The fallback list: one row per transport into every target not sent yet, in card order.
+ * The fallback list: one row per transport into every target not done yet, in card order,
+ * each target's transports checked like a card (checkCard) against what the game last
+ * reported, within the user's limits. The fallback's own answers are not read (shape
+ * unverified), so the rows are checked once, when the list is built.
  * @param {Transport[]} transports
  * @param {number[]} targets  card order
- * @param {Set<number>} sent  targets already requested
+ * @param {Set<number>} done  targets requested or skipped
  * @param {Map<number, { name: string, x: number, y: number }>} places
+ * @param {Map<number, Left>} [left]
+ * @param {{ reserve?: number[], keepMerchants?: number }} [limits]
  * @returns {Row[]}
  */
-export function fallbackRows(transports, targets, sent, places) {
+export function fallbackRows(transports, targets, done, places, left = new Map(), limits = {}) {
   const place = (/** @type {number} */ id) => {
     const p = places.get(id);
     return { id, name: p?.name ?? `#${id}`, x: p?.x ?? 0, y: p?.y ?? 0 };
   };
   return targets
-    .filter((id) => !sent.has(id))
-    .flatMap((id) => transports.filter((t) => t.to === id))
+    .filter((id) => !done.has(id))
+    .flatMap((id) => checkCard(transports, id, left, { ...limits, cost: [0, 0, 0], packages: 0 }).transports)
     .map((t) => ({ key: `${t.from}-${t.to}`, from: place(t.from), to: place(t.to), t }));
 }
 

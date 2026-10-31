@@ -402,14 +402,16 @@ Export/import and schema migration follow timetool2's `settings.js`.
   what it has, in whole merchant loads (excess off its largest share first: small amounts
   are the package-completing top-ups); less than one load drops it from the card. The
   card then says `Reduced: N packages may be short` (N = the most packages any one
-  resource's cut covers, rounded up: a package needs all three; capped at the card's packages) and its one click sends the trimmed body. No source left
+  resource's cut covers, rounded up: a package needs all three; capped at the card's
+  packages) and its one click sends the trimmed body. No source left
   = the card is skipped (`– Skipped`, greyed, moved down, no request). No extra request:
   only answers already received are used, so a card clicked while an earlier answer is
   still open is checked against older numbers. The user's limits hold here too: a source
   may send what the game reports above its reserve per resource, with the free merchants it
   reports minus the merchants to keep home (they are limits the user set, not only what
-  the game would refuse). The fallback rows
-  (`map_send`, answer shape unverified) are not pre-checked. Smoke scenarios `precheck`
+  the game would refuse). The fallback list leaves skipped cards out and checks its rows
+  the same way once, when it is built, against the numbers earlier `call` answers
+  reported; its own `map_send` answers (shape unverified) are not read. Smoke scenarios `precheck`
   and `failure-record` (stubbed game with real per-source stock below the overview).
 
 ## 8. Out of scope
