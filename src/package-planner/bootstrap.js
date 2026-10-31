@@ -164,7 +164,8 @@ async function calculate() {
     await afterPaint();
     const input = solverInput({ villages, academyLevels, mineLevels, incoming: incoming.byId, senders, receivers, config: cfg });
     const t0 = performance.now();
-    const plan = solve(input.world, { ...input.options, ...solverOptions(settings, target?.missing) });
+    const limits = solverOptions(settings, target?.missing);
+    const plan = solve(input.world, { ...input.options, ...limits });
     const ms = Math.round(performance.now() - t0);
     const view = planView(plan, prod.byId, storable.packages);
     report.plan = {
@@ -182,6 +183,7 @@ async function calculate() {
       warnings,
       transports: plan.transports,
       cost: RES.map((k) => cfg.packageCost[k]),
+      limits: { reserve: limits.reserve, keepMerchants: limits.keepMerchants },
       places: prod.byId,
     });
   } catch (err) {

@@ -332,6 +332,13 @@ test('as many packages: the earlier last arrival wins over fewer resource-hours'
   assert.deepEqual(plan.transports.map((t) => [t.from, t.to]).sort(), [[3, 2], [4, 1]]);
 });
 
+test('merchant-scarce retry: as many packages, the earlier last arrival wins (not fewer resource-hours)', () => {
+  // One solve on a merchant-scarce world: both orderings make 35 packages; the merchant-
+  // penalised one arrives by 4:28 (16,071 s), the cheaper one by 4:42 (16,924 s).
+  const plan = solveValid(generateWorld({ seed: 2, villages: 30, academies: 10, maxMerchants: 30 }), SINGLE_SOLVE);
+  assert.deepEqual([plan.packages, plan.longestSeconds], [35, 16071]);
+});
+
 test('most packages first, then the earliest last arrival: a tighter travel cap the user never set can win both', () => {
   // Single solves on this real account: no cap 71 / 0:31, cap 25 min 71 / 0:23, cap 20 min
   // 72 / 0:20. The solver tries such caps itself and keeps the best plan.

@@ -37,3 +37,24 @@ test('checkCard: a source with less than one merchant load drops out; no source 
   const r = checkCard(transports, 2, left([{ id: 12, res: [0, 0, 900], merchants: 4 }]), { cost, packages: 1 });
   assert.deepEqual(plain(r), { transports: [], short: [12], mayShort: 1 });
 });
+
+test('checkCard: packages that may be short = the most any one resource cut covers, not their sum', () => {
+  // 10 is 1,000 wood and 1,000 clay short: one package short, not two.
+  const r = checkCard(transports, 1, left([{ id: 10, res: [27000, 29000, 0], merchants: 58 }]), { cost, packages: 3 });
+  assert.deepEqual(plain(r).transports[0], [10, [27000, 29000, 0], 56]);
+  assert.equal(r.mayShort, 1);
+});
+
+test('checkCard: the reserve and the merchants to keep home still apply to the game\'s numbers', () => {
+  // 11 reports 25,500 iron and 53 merchants; reserve 5,000 iron, keep 10 merchants:
+  // 20,500 iron and 43 merchants may go -> 23 whole loads (as with 20,500 reported).
+  const limits = { reserve: [0, 0, 5000], keepMerchants: 10 };
+  const r = checkCard(transports, 1, left([{ id: 11, res: [1000, 2000, 25500], merchants: 53 }]), { cost, packages: 3, ...limits });
+  assert.deepEqual(plain(r).transports[1], [11, [1000, 2000, 20000], 23]);
+  // Exactly what the plan needs above the limits: as planned.
+  const exact = left([{ id: 10, res: [28000, 30000, 5000], merchants: 68 }]);
+  assert.deepEqual(checkCard(transports, 1, exact, { cost, packages: 3, ...limits }).short, []);
+  // Merchants short only because of the ones kept home.
+  const keep = checkCard(transports, 1, left([{ id: 10, res: [9e5, 9e5, 9e5], merchants: 60 }]), { cost, packages: 3, ...limits });
+  assert.deepEqual(plain(keep).transports[0], [10, [28000, 22000, 0], 50]);
+});

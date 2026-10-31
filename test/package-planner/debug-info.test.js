@@ -63,6 +63,19 @@ test('buildDebugInfo: a failed send keeps the request, the answer and what each 
   for (const secret of ['Village A', 'Village B', '500|500', '501|500']) assert.equal(out.includes(secret), false, `leaked ${secret}`);
 });
 
+test('buildDebugInfo: a source the pre-check dropped is still listed, with what was planned', () => {
+  const planned = [
+    { from: 10, to: 1, res: [28000, 30000, 0], merchants: 58, seconds: 100 },
+    { from: 11, to: 1, res: [0, 0, 400], merchants: 1, seconds: 500 },
+  ];
+  const snapshot = new Map([[11, { wood: 0, stone: 0, iron: 900, merchantsAvailable: 5 }]]);
+  const left = new Map([[11, { id: 11, res: [0, 0, 300], merchants: 4 }]]);
+  const failure = failureRecord({ action: 'call', target: 1, planned, sent: [planned[0]], snapshot, left, outcome: outcome('error', 'No') });
+  const out = buildDebugInfo({ failures: [failure] });
+  assert.match(out, /source 10: sent 28000\/30000\/0 \(58 merchants\); overview none; game reported none/);
+  assert.match(out, /source 11: sent none, planned 0\/0\/400 \(1 merchants\); overview 0\/0\/900 \(5 merchants\); game reported 0\/0\/300 \(4 merchants\)/);
+});
+
 test('buildDebugInfo: leaks no player name, player/village ids, coordinates or tokens', async () => {
   const out = buildDebugInfo(await report());
   for (const secret of ['Test Player', '1000001', 'deadbeef', 'village=101', '101', '500|500', 'Village 1', '2005', '639|220']) {

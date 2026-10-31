@@ -63,9 +63,11 @@ unknown). Hence (#16):
 - **Evidence is kept automatically.** Every failed send adds a record to "Copy debug info"
   (last 5, until the popup closes; survives Recalculate): action + target village id, the
   game's message and raw answer (scrubbed; an HTTP error keeps only its status), and per
-  source village id: what was sent (plus the plan's amounts when the pre-check trimmed
-  them), the overview snapshot's resources + merchants, and the latest `resources_left` /
-  `traders_free` the game reported for it in earlier successful answers (or `none`).
+  source village id of the plan's card: what was sent (`none` for a source the pre-check
+  dropped; plus the plan's amounts when the pre-check trimmed or dropped it), the overview
+  snapshot's resources + merchants, and the latest `resources_left` / `traders_free` the
+  game reported for it in earlier successful answers (or `none`), both as known at click
+  time.
   Village ids only: no names, coordinates, player ids or tokens.
 - **The game's own numbers are checked before each send** (§7).
 
@@ -300,7 +302,10 @@ closed). Details that were measured:
   upper bound (every tried cap is below it). Not a binary search: packages vs cap is not
   monotone (the 72 above exists only between 19 and 21 min). **Budget**: a new solve starts
   only while the work so far plus the last solve's stays ≤ 4 M Dijkstra steps (counted, so
-  it's deterministic; ~5 M/s here, ~0.5 M per solve on the real account). Worlds whose first
+  it's deterministic; ~5 M/s here, ~0.5 M per solve on the real account). The candidate
+  pairs (distances, per-source sort, K-nearest prune) are built once; each solve under a cap
+  takes a prefix of each source's list (no distances or sorting again): its setup is linear
+  in the edges, far below its Dijkstra steps, so the budget leaves it out. Worlds whose first
   solve takes > ~0.4 s get that one solve, as before. Measured: tiny worlds still equal the
   brute-force package count (400/400); the real account (fixture
   `academy-heavy-production.js`) 71 / 0:31 in ~120 ms → **72 / 0:19 in ~0.6 s** (6 solves).
@@ -399,14 +404,19 @@ Export/import and schema migration follow timetool2's `settings.js`.
   answer, checks every card not sent yet. A source short on resources or merchants sends
   what it has, in whole merchant loads (excess off its largest share first: small amounts
   are the package-completing top-ups); less than one load drops it from the card. The
-  card then says `Reduced: N packages may be short` (N = Σ resources cut ÷ package cost,
-  capped at the card's packages) and its one click sends the trimmed body. No source left
+  card then says `Reduced: N packages may be short` (N = the most packages any one
+  resource's cut covers, rounded up: a package needs all three; capped at the card's
+  packages) and its one click sends the trimmed body. No source left
   = the card is skipped (`– Skipped`, greyed, moved down, no request). No extra request:
   only answers already received are used, so a card clicked while an earlier answer is
-  still open is checked against older numbers. Reserves are not re-applied to the game's
-  numbers (the check only stops a request the game would refuse). The fallback rows
-  (`map_send`, answer shape unverified) are not pre-checked. Smoke scenarios `precheck`
-  and `failure-record` (stubbed game with real per-source stock below the overview).
+  still open is checked against older numbers. The user's limits hold here too: a source
+  may send what the game reports above its reserve per resource, with the free merchants it
+  reports minus the merchants to keep home (they are limits the user set, not only what
+  the game would refuse). The fallback list leaves skipped cards out and checks its rows
+  the same way once, when it is built, against the numbers earlier `call` answers
+  reported; its own `map_send` answers (shape unverified) are not read. Smoke scenarios
+  `precheck`, `fallback-precheck` and `failure-record` (stubbed game with real per-source
+  stock below the overview).
 
 ## 8. Out of scope
 
