@@ -53,7 +53,8 @@ test('outcome: failures keep the game\'s message; no argument = bot protection; 
   assert.deepEqual(brief(outcome('error', 'Not enough merchants')), { ok: false, reason: 'game', message: 'Not enough merchants' });
   assert.deepEqual(brief(outcome('error', ['A', 'B'])), { ok: false, reason: 'game', message: 'A B' });
   assert.deepEqual(brief(outcome('error', undefined)), { ok: false, reason: 'botProtect', message: '' });
-  assert.deepEqual(brief(outcome('error', { status: 500 })), { ok: false, reason: 'game', message: 'HTTP 500' });
+  // An HTTP error is not the game refusing this one card: it stops all sending.
+  assert.deepEqual(brief(outcome('error', { status: 500 })), { ok: false, reason: 'http', message: 'HTTP 500' });
   assert.deepEqual(brief(outcome('timeout')), { ok: false, reason: 'timeout', message: '' });
   assert.deepEqual(brief(outcome('unavailable')), { ok: false, reason: 'unavailable', message: '' });
 });
