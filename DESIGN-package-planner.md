@@ -52,9 +52,16 @@ timetool2 and shares its adapter/core/ui conventions (see `CLAUDE.md`, `DESIGN.m
 
 **Failure / captcha** (#19): a card the game refuses (its own error message, e.g. "Not
 enough resources available") is marked `✗ Failed` with that message and offers **its own**
-*Send village by village* rows (§7); every other card stays usable. Bot protection
-(captcha), an HTTP error, no answer, or sending unavailable stop everything: the remaining
-rows grey out. No retry or captcha logic. The player refreshes, solves the captcha and runs
+*Send village by village* rows (§7); every other card stays usable, but focus does **not**
+move on: the next send is a deliberate click, not a held Enter. The game's message is shown
+as plain text (several errors come as an HTML list: items joined). **Two game errors in a
+row** stop everything like the failures below (`The game refused twice in a row … refresh the
+page and run the script again`): some refusals hold for every card (stale session,
+sitter/vacation limits, market unavailable), and their text is translated, so the rule
+counts instead of reading it. Bot protection (captcha), an HTTP error, no answer, or sending
+unavailable stop everything: the remaining rows grey out. A stop holds until the popup
+closes, whichever plan's request caused it (also after Recalculate). No retry or captcha
+logic. The player refreshes, solves the captcha and runs
 the script again; in-flight transports count as already arrived (§4), so the new plan picks
 up where the old one stopped.
 Why (live run, enc1 v2): card 31 of 44 failed with "Not enough resources available" although
@@ -399,16 +406,22 @@ Export/import and schema migration follow timetool2's `settings.js`.
   holding Enter moves down the list (the approved-scripts pattern). Sent rows are marked
   done. Failure: see §1.
 - **Strictly one request at a time (#19).** The next button unlocks once the previous
-  answer has arrived *and* the ~200 ms lock is over, whichever is later (also across a
-  Recalculate), so every pre-check uses the game's latest numbers. Holding Enter still walks
-  the list: key repeats on a disabled button do nothing, and focus moves on when it unlocks.
+  answer has arrived *and* the ~200 ms lock is over, whichever is later, so every pre-check
+  uses the game's latest numbers. This holds for fallback rows too, and *Send village by
+  village* and Recalculate stay disabled while a request is pending (so every answer
+  belongs to the plan on screen; a new plan re-reads the overviews after it, so it needs no
+  numbers from the old plan's answers). Holding Enter still walks the list: key repeats on
+  a disabled button do nothing, and focus moves on when it unlocks (not after a game
+  error, §1).
 - Never one request per merchant; a row carries all three resources and N merchants.
 - Implemented (#6, `core/send.js` + `ui/popup.js`): `call` body is `target_id: 0` +
   `resource[src][wood|stone|iron]` for every source (zeros included). Outcomes: success
   (toast `response.success ?? .message`), game error (message on that card; offers that
   card's fallback rows; the other cards keep sending), HTTP error (`onError(xhr)`), bot
   protection (`onError()` without argument), no answer within 10 s (TW calls no callback
-  on 429/503). Every failure but a game error greys out the rest (#19). Smoke test:
+  on 429/503). Every failure but a game error greys out the rest (#19), and so does a
+  second game error in a row. `k of n sent` counts a failed card whose fallback rows were
+  all sent. Smoke test:
   `node test/package-planner/send.smoke.mjs` (headless Chrome, stubbed `TribalWars.post`).
 - **Pre-check with the game's numbers (#16, `checkCard` in `core/send.js`).** A successful
   `call` answers with `transport_info[]` per source (`village_id`, `resources_left`,
@@ -424,11 +437,16 @@ Export/import and schema migration follow timetool2's `settings.js`.
   latest answer). The user's limits hold here too: a source
   may send what the game reports above its reserve per resource, with the free merchants it
   reports minus the merchants to keep home (they are limits the user set, not only what
-  the game would refuse). A failed card's fallback rows (into that target only) are
-  checked the same way once, when the user opens them, against the numbers earlier `call` answers
-  reported; its own `map_send` answers (shape unverified) are not read. Smoke scenarios
-  `precheck`, `fallback-precheck` and `failure-record` (stubbed game with real per-source
-  stock below the overview).
+  the game would refuse). A failed card's fallback rows (`fallbackRows`, into that target
+  only) are checked the same way when the user opens them and again after every answer; a
+  row not clicked yet is rebuilt (trimmed, or skipped when nothing is left), a clicked row
+  keeps what it sent. An answer without numbers for a source it sent from (`map_send`:
+  shape unverified; read defensively, `transport_info` used when present) leaves that
+  source's last known numbers (the game's latest report, else the overview snapshot)
+  minus what was sent and its merchants (`leftAfter`), so later pre-checks see it. Smoke
+  scenarios `precheck`, `fallback-precheck`, `fallback-recheck`, `map-send-left` and
+  `failure-record` (stubbed game with real per-source stock below the overview);
+  `game-error-twice` and `recalc-pending` for the stops.
 
 ## 8. Out of scope
 

@@ -16,6 +16,11 @@
 // failure-record = a failed send leaves the request, answer and per-source numbers in
 // "Copy debug info", also after Recalculate; fallback-precheck = the fallback list after a
 // failure leaves out a source the game reports short.
+// Review fixes 3: game-error-twice = after a game error focus stays put, a second one in a
+// row stops everything; recalc-pending = Recalculate waits for the pending answer and a
+// captcha still stops the next plan; fallback-recheck = open rows are rebuilt after every
+// answer, no row while a request is pending; map-send-left = a map_send answer without
+// numbers subtracts what was sent, and a failed card sent row by row counts as sent.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -82,7 +87,18 @@ function stubs(fx, scenario) {
   // transport_info (resources_left + traders_free) for every source of the request.
   const stock = new Map(Object.entries(scenario.stock || {}).map(([id, s]) => [Number(id), { res: [9e5, 9e5, 9e5], merchants: 46, ...s }]));
   const real = (id) => { if (!stock.has(id)) stock.set(id, { res: [9e5, 9e5, 9e5], merchants: 46 }); return stock.get(id); };
-  function game(data) {
+  function game(params, data) {
+    if (params.ajaxaction === 'map_send') {
+      // Fallback: one transport from the posted source; answers without numbers (shape unverified).
+      const s = real(+params.village);
+      const r = [data.wood, data.stone, data.iron];
+      const loads = Math.ceil((r[0] + r[1] + r[2]) / 1000);
+      if (r.some((n, i) => n > s.res[i]) || loads > s.merchants) return null;
+      s.res = s.res.map((n, i) => n - r[i]);
+      s.merchants -= loads;
+      return { message: 'Resources sent' };
+    }
+    if ((scenario.refuse || []).includes(String(params.village))) return null; // the game refuses this card's request
     const req = new Map();
     for (const [k, v] of Object.entries(data)) {
       const m = /^resource\[(\d+)\]\[(\w+)\]$/.exec(k);
@@ -104,13 +120,13 @@ function stubs(fx, scenario) {
     post(screen, params, data, onSuccess, onError) {
       const n = window.__posts.push({ screen, params, data });
       if (scenario.stock) {
-        const answer = game(data);
-        setTimeout(() => (answer ? onSuccess(answer) : onError('Not enough resources available')), 50);
+        const answer = game(params, data);
+        setTimeout(() => (answer ? onSuccess(answer) : onError('Not enough resources available')), scenario.slowAt === n ? 1000 : 50);
         return;
       }
       if (scenario.throwAt === n) throw new Error('TribalWars.post broke'); // TW changed: throws before sending
       const slow = scenario.slowAt === n;
-      const fail = scenario.failAt === n || (slow && scenario.slowKind === 'game');
+      const fail = [].concat(scenario.failAt).includes(n) || (slow && scenario.slowKind === 'game');
       if (fail && scenario.kind === 'noAnswer') return; // like HTTP 429/503: no callback at all
       setTimeout(() => {
         if (!fail) onSuccess({ success: 'Resources requested' });
@@ -170,7 +186,41 @@ async function driver(scenario) {
       check('TribalWars.post throwing: failure shown, nothing more to send', err.length > 0 && sendButtons().length === 0, err);
       throw 'done';
     }
-    if (scenario.slowAt) {
+    if (scenario.name === 'game-error-twice') {
+      await sleep(300);
+      sendButtons()[0].click(); // #1 ok
+      await sleep(300);
+      sendButtons()[0].click(); // #2: game error
+      await sleep(300);
+      check('after one game error the other cards stay usable', sendButtons().length > 0 && !$$('.pp-root > div > .pp-error').length, sendButtons().length);
+      sendButtons()[0].click(); // #3, a deliberate click: game error again
+      await sleep(300);
+      const box = $$('.pp-error').map((e) => e.textContent).join(' ');
+      check('two game errors in a row stop all sending, refresh and run again', sendButtons().length === 0 && $$('.pp-card:not(.pp-done)').length === 0
+        && /twice in a row/.test(box) && /refresh the page and run the script again/.test(box), box);
+      check('no fallback offered once stopped', $$('button.pp-fallback').length === 0);
+      $$('.pp-card button').forEach((b) => b.click());
+      check('nothing more posted', window.__posts.length === 3, window.__posts.length);
+      throw 'done';
+    }
+    if (scenario.name === 'recalc-pending') {
+      await sleep(300);
+      sendButtons()[0].click(); // answered after 1 s with the captcha
+      await sleep(300);
+      const calc = () => $$('.pp-calc button')[0];
+      check('Recalculate disabled while a request is pending', calc().disabled);
+      calc().click();
+      await sleep(900);
+      check('the captcha stops all sending', sendButtons().length === 0 && /captcha/.test($$('.pp-error').map((e) => e.textContent).join(' ')));
+      check('Recalculate enabled once the answer arrived', !calc().disabled);
+      calc().click();
+      await until(() => $$('.pp-card').length && !calc().disabled);
+      await sleep(300);
+      check('a new plan still does not send after the captcha', sendButtons().length === 0 && /captcha/.test($$('.pp-error').map((e) => e.textContent).join(' ')), sendButtons().length);
+      check('one request in all', window.__posts.length === 1, window.__posts.length);
+      throw 'done';
+    }
+    if (scenario.slowAt && !scenario.stock) {
       const before = ids();
       await sleep(300);
       sendButtons()[0].click(); // #1: answered after 1 s
@@ -245,6 +295,41 @@ async function driver(scenario) {
       const payload = (to) => window.__posts.find((p) => String(p.params.village) === to)?.data;
       check('card order of the fixture plan', ids().join() === '103,303,405,105,205,203,403', ids());
       check('collapsed line says production is not counted', $$('.pp-chipline span')[0].textContent.endsWith(' · target production not counted'), $$('.pp-chipline span')[0].textContent);
+      const rowOf = (key) => $$(`.pp-row[data-key="${key}"]`)[0];
+      if (scenario.name === 'fallback-recheck') {
+        await sendAll(4); // 103 303 405 ok; 105 refused by the game
+        $$('.pp-card[data-village="105"] button.pp-fallback')[0].click();
+        await sleep(50);
+        check('rows of 105 built (201 not reported yet: as planned)', /5\.813/.test(rowOf('201-105')?.textContent || ''), rowOf('201-105')?.textContent);
+        sendButtons()[0].click(); // 205: answered after 1 s
+        await sleep(300);
+        rowOf('201-105').querySelector('button').click();
+        check('no row is sent while a card request is pending', window.__posts.length === 5, window.__posts.length);
+        await sleep(900);
+        sendButtons()[0].click(); // 203: the game now reports 201 has 4,813 iron left
+        await sleep(300);
+        check('open fallback rows rechecked after a later answer: short source trimmed', /4 merchants/.test(rowOf('201-105')?.textContent || ''), rowOf('201-105')?.textContent);
+        rowOf('201-105').querySelector('button').click();
+        await sleep(300);
+        const q = window.__posts[6];
+        check('trimmed row sends what the game reports', q?.params.ajaxaction === 'map_send' && String(q.params.village) === '201' && q.data.iron === 4000, q);
+        throw 'done';
+      }
+      if (scenario.name === 'map-send-left') {
+        await sendAll(5); // 103 303 405 105 ok (301: 10,863 iron left); 205 refused by the game
+        $$('.pp-card[data-village="205"] button.pp-fallback')[0].click();
+        await sleep(50);
+        for (const key of ['301-205', '204-205']) { rowOf(key).querySelector('button').click(); await sleep(300); }
+        check('both rows sent via map_send', window.__posts.slice(5).every((p) => p.params.ajaxaction === 'map_send') && window.__posts.length === 7
+          && $$('.pp-row').every((r) => r.textContent.includes('✓ Sent')), window.__posts.length);
+        check('a map_send answer without numbers: the source\'s sent amounts are subtracted, the next card using it is reduced',
+          /reduced/i.test(card('203').textContent), card('203').textContent);
+        await sendAll(2); // 203, 403
+        check('the reduced card leaves out the source that has nothing left', !('resource[301][iron]' in (payload('203') || {})) && card('203').textContent.includes('✓ Sent'), payload('203'));
+        const line = $$('.pp-summary span').map((e) => e.textContent).find((x) => / of \d+ sent/.test(x)) || '';
+        check('a failed card fully sent village by village counts as sent', /7 of 7 sent/.test(line), line);
+        throw 'done';
+      }
       if (scenario.name === 'fallback-precheck') {
         await sendAll(6); // 103 303 405 105 205 ok (201: 500 iron left); 203 fails: 202 has 500 iron
         $$('.pp-card[data-village="203"] button.pp-fallback')[0].click();
@@ -338,8 +423,10 @@ async function driver(scenario) {
         const failed = $$(`.pp-card[data-village="${before[1]}"]`)[0];
         check('failed card shows ✗ Failed and the game\'s message', failed.textContent.includes('✗ Failed') && failed.textContent.includes('Not enough merchants'), failed.textContent);
         check('other cards stay usable', sendButtons().length === before.length - 2 && sendButtons().every((b) => !b.disabled), sendButtons().length);
-        check('focus on the next card after the failure', document.activeElement === sendButtons()[0] && sendButtons()[0].closest('.pp-card').getAttribute('data-village') === before[2]);
-        document.activeElement.click();
+        check('focus does not move on after a game error (the next send is a deliberate click)', !document.activeElement?.classList.contains('pp-send'), document.activeElement?.outerHTML);
+        document.activeElement?.click?.(); // still holding Enter: nothing is sent
+        check('holding Enter sends nothing after a game error', window.__posts.length === n, window.__posts.length);
+        sendButtons()[0].click();
         await sleep(300);
         check('the next card still sends', window.__posts.length === n + 1 && String(window.__posts[n].params.village) === before[2]
           && $$(`.pp-card[data-village="${before[2]}"]`)[0].textContent.includes('✓ Sent'), window.__posts.map((p) => p.params.village));
@@ -393,6 +480,14 @@ const scenarios = [
   // Fallback after a failure: 201's 500 iron left (reported) drops its row into 203.
   { name: 'fallback-precheck', settings: { countProduction: false }, stock: { 201: { res: [9e5, 9e5, 6313] }, 202: { res: [9e5, 9e5, 500] } } },
   // #16: 204 really has 1,000 wood (overview 30,879): card 205 fails, evidence kept.
+  // Review fixes #3 (popup): two game errors in a row stop everything; Recalculate waits
+  // for the pending answer and a stop holds for the next plan too.
+  { name: 'game-error-twice', failAt: [2, 3], kind: 'game' },
+  { name: 'recalc-pending', slowAt: 1, slowKind: 'game', kind: 'captcha' },
+  // Open fallback rows are rechecked on every answer; one request at a time holds for rows.
+  { name: 'fallback-recheck', settings: { countProduction: false }, refuse: ['105'], slowAt: 5, stock: { 201: { res: [9e5, 9e5, 23813] } } },
+  // map_send answers carry no numbers: the sent amounts come off the source's last known numbers.
+  { name: 'map-send-left', settings: { countProduction: false }, refuse: ['205'], stock: { 301: { res: [9e5, 9e5, 23863] } } },
   { name: 'failure-record', settings: { countProduction: false }, stock: { 204: { res: [1000, 9e5, 9e5] } } },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));

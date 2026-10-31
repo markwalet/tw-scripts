@@ -115,27 +115,51 @@ export function failureRecord({ action, target, planned, sent, outcome: o, snaps
 /** @typedef {{ key: string, from: Place, to: Place, t: Transport }} Row */
 
 /**
- * The fallback list: one row per transport into every target not done yet, in card order,
- * each target's transports checked like a card (checkCard) against what the game last
- * reported, within the user's limits. The fallback's own answers are not read (shape
- * unverified), so the rows are checked once, when the list is built.
+ * A failed card's fallback rows: one per transport into `target`, checked like a card
+ * (checkCard) against what the game last reported, within the user's limits. The popup
+ * rebuilds them after every answer, so they always use the latest numbers.
  * @param {Transport[]} transports
- * @param {number[]} targets  card order
- * @param {Set<number>} done  targets requested or skipped
+ * @param {number} target
  * @param {Map<number, { name: string, x: number, y: number }>} places
  * @param {Map<number, Left>} [left]
  * @param {{ reserve?: number[], keepMerchants?: number }} [limits]
  * @returns {Row[]}
  */
-export function fallbackRows(transports, targets, done, places, left = new Map(), limits = {}) {
+export function fallbackRows(transports, target, places, left = new Map(), limits = {}) {
   const place = (/** @type {number} */ id) => {
     const p = places.get(id);
     return { id, name: p?.name ?? `#${id}`, x: p?.x ?? 0, y: p?.y ?? 0 };
   };
-  return targets
-    .filter((id) => !done.has(id))
-    .flatMap((id) => checkCard(transports, id, left, { ...limits, cost: [0, 0, 0], packages: 0 }).transports)
+  return checkCard(transports, target, left, { ...limits, cost: [0, 0, 0], packages: 0 }).transports
     .map((t) => ({ key: `${t.from}-${t.to}`, from: place(t.from), to: place(t.to), t }));
+}
+
+/**
+ * What each source of a successful send has left: what the answer reports (`call`:
+ * transport_info), else (an answer without numbers, e.g. `map_send`: shape unverified)
+ * the last known numbers minus what was sent: the game's latest report, else the
+ * overview snapshot. A source with neither is left unknown.
+ * @param {Transport[]} sent
+ * @param {Left[]} reported
+ * @param {Map<number, Left>} left
+ * @param {Map<number, { wood?: number, stone?: number, iron?: number, merchantsAvailable?: number }>} snapshot
+ * @returns {Left[]}
+ */
+export function leftAfter(sent, reported, left, snapshot) {
+  const out = [...reported];
+  for (const id of new Set(sent.map((t) => t.from))) {
+    if (reported.some((l) => l.id === id)) continue;
+    const v = snapshot.get(id);
+    const base = left.get(id) ?? (v ? { res: RES.map((k) => num(v[k])), merchants: num(v.merchantsAvailable) } : null);
+    if (!base) continue;
+    const mine = sent.filter((t) => t.from === id);
+    out.push({
+      id,
+      res: base.res.map((n, i) => Math.max(0, n - mine.reduce((s, t) => s + t.res[i], 0))),
+      merchants: Math.max(0, base.merchants - mine.reduce((s, t) => s + t.merchants, 0)),
+    });
+  }
+  return out;
 }
 
 /** What the game reported for one source after a send. @typedef {{ id: number, res: number[], merchants: number }} Left */
@@ -148,6 +172,19 @@ export function fallbackRows(transports, targets, done, places, left = new Map()
  */
 
 const num = (/** @type {unknown} */ x) => Number(x) || 0;
+
+const ENTITIES = /** @type {Record<string, string>} */ ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' });
+/**
+ * The game's error as plain text: several errors come as an HTML list (`<ul><li>…`); list
+ * items are joined, tags dropped, common entities decoded. Shown with textContent only.
+ * @param {string} s
+ */
+const plainText = (s) => s
+  .replace(/<\/li>\s*<li\b[^>]*>/gi, ' · ')
+  .replace(/<[^>]*>/g, '')
+  .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, e) => ENTITIES[e])
+  .replace(/\s+/g, ' ')
+  .trim();
 
 /**
  * How a request ended, read defensively from TribalWars.post's callbacks: onSuccess gets
@@ -171,5 +208,5 @@ export function outcome(kind, arg) {
   if (kind !== 'error') return { ok: false, reason: kind, message: '', raw: null };
   if (arg == null) return { ok: false, reason: 'botProtect', message: '', raw: null };
   if (typeof arg === 'object' && !Array.isArray(arg)) return { ok: false, reason: 'http', message: `HTTP ${arg.status}`, raw: { status: arg.status } };
-  return { ok: false, reason: 'game', message: Array.isArray(arg) ? arg.join(' ') : String(arg), raw: arg };
+  return { ok: false, reason: 'game', message: plainText(Array.isArray(arg) ? arg.join(' ') : String(arg)), raw: arg };
 }
