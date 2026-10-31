@@ -3,3 +3,8 @@ dist/
 *.log
 .DS_Store
 .idea/
+
+# Reference files: local-only, not ours to redistribute (see CLAUDE.md)
+/game.js
+/off-pack.js
+/timetool.js

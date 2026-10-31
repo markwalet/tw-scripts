@@ -493,9 +493,8 @@ Result on #13: all pass. Click lock 200 ms + one request per click: `send.smoke.
 > keep home, warehouse buffer, sender/receiver group, noble target) are saved per world.
 > Source: readable, not minified.
 
-Before submitting: fill in the ScriptAPI author/e-mail (`AUTHOR` in
-`src/package-planner/bootstrap.js`; e-mail is empty for now, and TW's `register` rejects an
-empty one on hosted scripts — the planner then just doesn't register).
+ScriptAPI author: `markwalet`, `scripts@tw-tracker.net` (`AUTHOR` in
+`src/package-planner/bootstrap.js`).
 
 ## Open / verify on a live page
 
