@@ -372,13 +372,16 @@ function optimise(model, penalty) {
   // planned arrival instead, and from here on only takes deliveries that arrive no later
   // (its longer arcs close). Then the greedy goes on in the same network. Valid by
   // construction, no second solve.
-  /** Each academy's farthest planned delivery (edge index, -1 = none). */
-  const farthest = () => {
-    const far = new Array(academies.length).fill(-1);
-    edges.forEach((e, i) => {
-      if ((far[e.a] < 0 || e.seconds > edges[far[e.a]].seconds) && shipArcs[i].some((arc) => net.flow(arc) > 0)) far[e.a] = i;
-    });
-    for (const p of pins) if (far[edges[p.e].a] < 0 || edges[p.e].seconds > edges[far[edges[p.e].a]].seconds) far[edges[p.e].a] = p.e;
+  /** @type {number[][]} edge indices into each academy */
+  const into = academies.map(() => []);
+  edges.forEach((e, i) => into[e.a].push(i));
+  /** Academy a's farthest planned delivery now (edge index, -1 = none; a pinned load counts). */
+  const farthest = (/** @type {number} */ a) => {
+    let far = -1;
+    for (const i of into[a]) {
+      if ((far < 0 || edges[i].seconds > edges[far].seconds) && shipArcs[i].some((arc) => net.flow(arc) > 0)) far = i;
+    }
+    for (const p of pins) if (edges[p.e].a === a && (far < 0 || edges[p.e].seconds > edges[far].seconds)) far = p.e;
     return far;
   };
   // Own production until arrival (#18). Circular as well: what an academy produces before
@@ -391,14 +394,18 @@ function optimise(model, penalty) {
   // the pinned load stays needed. Credited academies may then take more packages.
   const credited = academies.map(() => false);
   if (o.countProduction) {
-    farthest().forEach((i, a) => {
-      const prod = academies[a].production;
-      if (i < 0 || !prod || !n[a]) return;
+    // One academy at a time: each pin re-routes flow, so the next farthest delivery is read
+    // after it.
+    academies.forEach((v, a) => {
+      const i = v.production && n[a] ? farthest(a) : -1;
+      if (i < 0) return;
+      const prod = /** @type {Res} */ (v.production);
       const e = edges[i];
       const got = prod.map((p) => Math.floor((p * e.seconds) / 3600));
       const left = (/** @type {number} */ k) => n[a] * c[k] - info[a].own[k] - got[k];
       let k = -1;
       for (let r = 0; r < 3; r++) if (net.flow(shipArcs[i][r]) > 0 && (k < 0 || left(r) > left(k))) k = r;
+      if (k < 0) return;
       const was = [0, 1, 2].map((r) => deficit(a, n[a], r));
       const cp = net.checkpoint();
       credit[a] = got.map((g, r) => (r === k ? Math.min(g, Math.max(0, n[a] * c[r] - info[a].own[r] - U)) : g));
@@ -415,8 +422,10 @@ function optimise(model, penalty) {
     });
   }
 
-  const far = farthest();
-  const horizon = far.map((i) => (i < 0 ? -1 : edges[i].seconds));
+  const horizon = academies.map((_, a) => {
+    const i = farthest(a);
+    return i < 0 ? -1 : edges[i].seconds;
+  });
   const raised = academies.map((_, a) => {
     if (n[a] < max[a] || horizon[a] < 0) return false;
     const m = info[a].fit(horizon[a]);

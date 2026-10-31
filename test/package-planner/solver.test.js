@@ -261,6 +261,18 @@ test('counting production: random worlds with production stay valid and never lo
   assert.ok(gained > 0, 'production never added a package');
 });
 
+test('counting production on the real account: two more packages, fewer merchants, same last arrival', () => {
+  // 63 academies making up to 9504/hour each. Pinning one academy's farthest load moves
+  // flow, so the next academy's farthest delivery is read after it (reading them all first
+  // once pinned a delivery that no longer carried anything: an invalid plan).
+  const { world, options } = academyHeavyProduction;
+  const off = solveValid(world, options);
+  const on = solveValid(world, { ...options, countProduction: true });
+  assert.deepEqual([off.packages, off.longestSeconds], [72, 1140]);
+  assert.deepEqual([on.packages, on.longestSeconds], [74, 1140]);
+  assert.ok(on.merchants < off.merchants, `${on.merchants} vs ${off.merchants} merchants`);
+});
+
 test('villages outside the sender group never send', () => {
   const world = { villages: [academy(1, 500, 500, [0, 0, 0]), village(2, 503, 504, [90000, 90000, 90000], 100, { sender: false })] };
   assert.equal(solveValid(world).packages, 0);
