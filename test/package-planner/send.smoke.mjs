@@ -4,11 +4,12 @@
 //   npm run build && node test/package-planner/send.smoke.mjs
 // Checks: lock ~200 ms, sent card moves to the bottom (list keeps its length), focus moves
 // to the next button (holding Enter = repeated clicks on the focused button), one request
-// per click, the failure path (game error, bot protection, no answer) and the fallback.
+// per click, the failure path and the fallback. #19: a game error fails only its card (its
+// own village-by-village rows, the other cards keep sending); bot protection, an HTTP error
+// or no answer stop everything; one-at-a-time = no request while another is pending.
 // mobile-sitter: TW mobile + sitting, 360 px wide window, TW-like Dialog stub: no horizontal
 // scroll, send buttons on screen and tap-sized, no auto-focus, `&t=` on every own GET.
-// Review fixes: TribalWars.post throwing is never re-sent; the fallback waits for open
-// requests and offers unconfirmed targets; an open settings input survives re-renders;
+// Review fixes: TribalWars.post throwing is never re-sent; an open settings input survives re-renders;
 // a cached config keeps its time; a failed start retries on Calculate; two runs share 5/s.
 // #16 (stubbed game with real per-source stock): precheck = after a successful answer the
 // next card whose source the game reports short is trimmed/marked before its send;
@@ -114,6 +115,7 @@ function stubs(fx, scenario) {
       setTimeout(() => {
         if (!fail) onSuccess({ success: 'Resources requested' });
         else if (scenario.kind === 'captcha') onError();
+        else if (scenario.kind === 'http') onError({ status: 500 });
         else onError('Not enough merchants');
       }, slow ? 1000 : 50);
     },
@@ -172,21 +174,16 @@ async function driver(scenario) {
       const before = ids();
       await sleep(300);
       sendButtons()[0].click(); // #1: answered after 1 s
-      await sleep(250);
-      sendButtons()[0].click(); // #2: game error after 50 ms
-      await sleep(150);
-      const fb = $$('button.pp-fallback')[0];
-      const err = $$('.pp-error').map((e) => e.textContent).join(' ');
-      check('fallback waits while a request is still open, and says so', fb && fb.disabled && /waiting/i.test(err), { fb: !!fb, disabled: fb?.disabled, err });
-      await sleep(1100);
-      const fb2 = $$('button.pp-fallback')[0];
-      check('fallback offered once every request answered', fb2 && !fb2.disabled);
-      fb2?.click();
-      await until(() => $$('.pp-card[data-to]').length);
-      const tos = new Set($$('.pp-card[data-to]').map((c) => c.getAttribute('data-to')));
-      check(scenario.slowKind === 'ok' ? 'fallback leaves out the target confirmed sent' : 'fallback offers the target whose open request then failed',
-        tos.has(before[0]) === (scenario.slowKind !== 'ok'), { tos: [...tos], before });
-      check('fallback offers the target that failed', tos.has(before[1]), { tos: [...tos], before });
+      await sleep(300); // the ~200 ms lock is over, the answer is not
+      check('buttons stay locked while a request is pending', sendButtons().length === before.length - 1 && sendButtons().every((b) => b.disabled), sendButtons().map((b) => b.disabled));
+      sendButtons().forEach((b) => b.click());
+      document.activeElement?.click?.(); // holding Enter
+      check('no request posted while another is pending', window.__posts.length === 1, window.__posts.length);
+      await sleep(900);
+      check('next button unlocks once the answer arrived, and takes focus', sendButtons().every((b) => !b.disabled)
+        && document.activeElement === sendButtons()[0] && sendButtons()[0].closest('.pp-card').getAttribute('data-village') === before[1]);
+      document.activeElement.click();
+      check('then one click is one request', window.__posts.length === 2 && String(window.__posts[1].params.village) === before[1], window.__posts.length);
       throw 'done';
     }
     if (scenario.name === 'settings-focus') {
@@ -250,11 +247,11 @@ async function driver(scenario) {
       check('collapsed line says production is not counted', $$('.pp-chipline span')[0].textContent.endsWith(' · target production not counted'), $$('.pp-chipline span')[0].textContent);
       if (scenario.name === 'fallback-precheck') {
         await sendAll(6); // 103 303 405 105 205 ok (201: 500 iron left); 203 fails: 202 has 500 iron
-        await until(() => $$('.pp-fallback').length && !$$('.pp-fallback')[0].disabled);
-        $$('.pp-fallback')[0].click();
+        $$('.pp-card[data-village="203"] button.pp-fallback')[0].click();
         await sleep(50);
-        const into = (id) => $$(`.pp-card[data-to="${id}"]`).length;
-        check('fallback: unsent targets only, source the game reports short left out', into(203) === 2 && into(403) === 3 && $$('.pp-card').length === 5, { 203: into(203), 403: into(403), all: $$('.pp-card').length });
+        const into = (id) => $$(`.pp-row[data-to="${id}"]`).length;
+        check('fallback: the failed target only, source the game reports short left out', into(203) === 2 && $$('.pp-row').length === 2, { 203: into(203), all: $$('.pp-row').length });
+        check('the card after the failed one still has its Request button', !!card('403').querySelector('button.pp-send'), card('403').textContent);
         throw 'done';
       }
       if (scenario.name === 'precheck') {
@@ -284,6 +281,11 @@ async function driver(scenario) {
         check('debug info: source never reported: sent amounts + overview snapshot', dbg.includes('source 204: sent 3894/0/0 (4 merchants); overview 30879/60779/719 (14 merchants); game reported none'), dbg);
         check('debug info: source reported by an earlier answer', dbg.includes('source 301: sent 0/0/10813 (11 merchants); overview 33140/44720/50294 (46 merchants); game reported 900000/900000/887000 (33 merchants)'), dbg);
         check('debug info: no village names or coordinates', !/Village|\d{3}\|\d{3}/.test(dbg), dbg);
+        check('failed card marked, with the game\'s message', /✗ Failed/.test(card('205').textContent) && card('205').textContent.includes('Not enough resources available'), card('205').textContent);
+        await sendAll(2); // #19: the cards after the failed one still send
+        const posted = window.__posts.map((p) => String(p.params.village));
+        check('cards after the failed one still send', posted.join() === '103,303,405,105,205,203,403'
+          && ['203', '403'].every((id) => card(id).textContent.includes('✓ Sent')), posted);
         $$('.pp-calc button')[0].click(); // a new plan: the record stays until the popup closes
         await until(() => $$('.pp-card').length && !$$('.pp-calc button')[0].disabled);
         $$('.pp-actions button').find((b) => b.textContent === 'Copy debug info').click();
@@ -328,21 +330,34 @@ async function driver(scenario) {
     if (scenario.failAt) {
       sendButtons()[0].click(); // request #2 fails
       await sleep(scenario.kind === 'noAnswer' ? 10500 : 300);
+      const n = window.__posts.length;
       const err = $$('.pp-error').map((e) => e.textContent).join(' ');
       check(`failure shown (${scenario.kind})`, scenario.kind === 'game' ? err.includes('Not enough merchants') : err.length > 0, err);
-      check('remaining cards greyed out, buttons disabled', sendButtons().length === 0 && $$('.pp-card:not(.pp-done)').length === 0, ids());
-      const n = window.__posts.length;
-      $$('.pp-card button').forEach((b) => b.click());
-      check('no further requests after a failure', window.__posts.length === n && n === 2, n);
-      const fb = $$('button.pp-fallback');
-      check('fallback offered only for a game error', (scenario.kind === 'game') === (fb.length === 1), fb.length);
-      if (fb.length) {
+      if (scenario.kind === 'game') {
+        // #19: only the failed card stops; it offers its own village-by-village rows.
+        const failed = $$(`.pp-card[data-village="${before[1]}"]`)[0];
+        check('failed card shows ✗ Failed and the game\'s message', failed.textContent.includes('✗ Failed') && failed.textContent.includes('Not enough merchants'), failed.textContent);
+        check('other cards stay usable', sendButtons().length === before.length - 2 && sendButtons().every((b) => !b.disabled), sendButtons().length);
+        check('focus on the next card after the failure', document.activeElement === sendButtons()[0] && sendButtons()[0].closest('.pp-card').getAttribute('data-village') === before[2]);
+        document.activeElement.click();
+        await sleep(300);
+        check('the next card still sends', window.__posts.length === n + 1 && String(window.__posts[n].params.village) === before[2]
+          && $$(`.pp-card[data-village="${before[2]}"]`)[0].textContent.includes('✓ Sent'), window.__posts.map((p) => p.params.village));
+        const fb = $$('button.pp-fallback');
+        check('fallback offered on the failed card only', fb.length === 1 && fb[0].closest('.pp-card').getAttribute('data-village') === before[1], fb.length);
         fb[0].click();
-        await until(() => sendButtons().length);
-        sendButtons()[0].click();
-        const q = window.__posts[n];
-        check('fallback: one transport per click via map_send from the source', window.__posts.length === n + 1 && q.params.ajaxaction === 'map_send'
+        await until(() => $$('.pp-row').length);
+        const tos = new Set($$('.pp-row').map((r) => r.getAttribute('data-to')));
+        check('fallback rows: only the failed target', tos.size === 1 && tos.has(before[1]), [...tos]);
+        $$('.pp-row button.pp-send')[0].click();
+        const q = window.__posts[n + 1];
+        check('fallback: one transport per click via map_send from the source', window.__posts.length === n + 2 && q.params.ajaxaction === 'map_send'
           && Number.isFinite(+q.params.village) && Object.keys(q.data).join() === 'target_id,wood,stone,iron', q);
+      } else {
+        check('everything stops: remaining cards greyed out, buttons disabled', sendButtons().length === 0 && $$('.pp-card:not(.pp-done)').length === 0, ids());
+        $$('.pp-card button').forEach((b) => b.click());
+        check('no further requests after a failure', window.__posts.length === n && n === 2, n);
+        check('no fallback offered', $$('button.pp-fallback').length === 0);
       }
     }
   } catch (e) {
@@ -360,13 +375,13 @@ const scenarios = [
   { name: 'hold-enter' },
   { name: 'game-error', failAt: 2, kind: 'game' },
   { name: 'captcha', failAt: 2, kind: 'captcha' },
+  { name: 'http-error', failAt: 2, kind: 'http' },
   { name: 'no-answer', failAt: 2, kind: 'noAnswer' },
   { name: 'mobile-sitter' },
   { name: 'groups' },
   { name: 'noble-target', nobles: 2 },
   { name: 'post-throws', throwAt: 1 },
-  { name: 'fallback-pending-ok', slowAt: 1, slowKind: 'ok', failAt: 2, kind: 'game' },
-  { name: 'fallback-pending-fails', slowAt: 1, slowKind: 'game', failAt: 2, kind: 'game' },
+  { name: 'one-at-a-time', slowAt: 1, slowKind: 'ok' },
   { name: 'settings-focus' },
   { name: 'config-cache' },
   { name: 'config-fails', configFails: 2 },
