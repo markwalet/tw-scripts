@@ -112,12 +112,15 @@ const better = (/** @type {Plan} */ p, /** @type {Plan} */ q) =>
  */
 export function solve(world, options = {}) {
   const o = { ...DEFAULTS, ...options };
+  // The candidate pairs, sorted by distance, once: each solve under a cap takes a prefix.
+  const pairs = candidates(world, o);
   let work = 0;
   let last = 0;
   const run = (/** @type {number} */ cap) => {
-    const r = solveOnce(world, { ...o, maxTravelSeconds: cap });
+    const r = solveOnce(pairs, { ...o, maxTravelSeconds: cap });
     last = r.work;
-    work += last;    return r.plan;
+    work += last;
+    return r.plan;
   };
   let best = run(o.maxTravelSeconds);
   const first = best.longestSeconds;
@@ -142,8 +145,8 @@ export function solve(world, options = {}) {
 }
 
 /** One solve under the options' travel cap. `work` = Dijkstra steps it took. */
-function solveOnce(/** @type {{ villages: Village[] }} */ world, /** @type {typeof DEFAULTS} */ o) {
-  const model = buildModel(world, o);
+function solveOnce(/** @type {ReturnType<typeof candidates>} */ pairs, /** @type {typeof DEFAULTS} */ o) {
+  const model = buildModel(pairs, o);
   let best = optimise(model, 0);
   let work = best.work;
   // Cheapest-first spends merchants on cheap but merchant-hungry packages. When merchants
@@ -159,34 +162,49 @@ function solveOnce(/** @type {{ villages: Village[] }} */ world, /** @type {type
   return { plan, work };
 }
 
-/** Everything about the input that doesn't depend on the plan. */
-function buildModel(/** @type {{ villages: Village[] }} */ world, /** @type {typeof DEFAULTS} */ o) {
-  const U = o.merchantCapacity;
-  const c = o.cost;
+/**
+ * Candidate pairs under the user's max travel time: per source its K nearest academies
+ * (all on small worlds), nearest first. Travel time grows with distance, so the K nearest
+ * within a tighter cap are a prefix of each list.
+ */
+function candidates(/** @type {{ villages: Village[] }} */ world, /** @type {typeof DEFAULTS} */ o) {
   const villages = world.villages;
   const academies = villages.filter((v) => v.academy);
   const senders = villages.filter((v) => v.sender !== false && v.merchants - o.keepMerchants > 0);
-  const aIndex = new Map(academies.map((a, i) => [a, i]));
-
-  // Candidate edges: within max travel, K nearest academies per source (all on small worlds).
-  /** @type {{ s: number, a: number, d: number, seconds: number }[]} */
-  const edges = [];
   const K = senders.length * academies.length <= o.allPairsUpTo ? Infinity : o.nearestAcademies;
-  const longest = new Array(academies.length).fill(0);
-  senders.forEach((v, s) => {
-    const near = [];
+  const near = senders.map((v, s) => {
+    /** @type {{ s: number, a: number, d: number, seconds: number }[]} */
+    const list = [];
     for (let a = 0; a < academies.length; a++) {
       if (academies[a] === v) continue;
       const d = Math.hypot(v.x - academies[a].x, v.y - academies[a].y);
       const seconds = Math.round((d * 360) / o.worldSpeed);
-      if (seconds <= o.maxTravelSeconds) near.push({ s, a, d, seconds });
+      if (seconds <= o.maxTravelSeconds) list.push({ s, a, d, seconds });
     }
-    near.sort((p, q) => p.d - q.d);
-    for (const e of near.slice(0, K)) {
+    list.sort((p, q) => p.d - q.d);
+    return list.slice(0, K);
+  });
+  return { villages, academies, senders, near };
+}
+
+/** Everything about the input that doesn't depend on the plan, under the options' travel cap. */
+function buildModel(/** @type {ReturnType<typeof candidates>} */ pairs, /** @type {typeof DEFAULTS} */ o) {
+  const U = o.merchantCapacity;
+  const c = o.cost;
+  const { villages, academies, senders, near } = pairs;
+  const aIndex = new Map(academies.map((a, i) => [a, i]));
+
+  // Candidate edges within this solve's cap: a prefix of each source's list.
+  /** @type {{ s: number, a: number, d: number, seconds: number }[]} */
+  const edges = [];
+  const longest = new Array(academies.length).fill(0);
+  for (const list of near) {
+    for (const e of list) {
+      if (e.seconds > o.maxTravelSeconds) break;
       edges.push(e);
       longest[e.a] = Math.max(longest[e.a], e.seconds);
     }
-  });
+  }
 
   // Per academy: what it holds (in-flight counts, capped by the warehouse) and the most
   // packages its warehouse allows. Imports must fit under storage − buffer − production

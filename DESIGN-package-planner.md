@@ -302,7 +302,10 @@ closed). Details that were measured:
   upper bound (every tried cap is below it). Not a binary search: packages vs cap is not
   monotone (the 72 above exists only between 19 and 21 min). **Budget**: a new solve starts
   only while the work so far plus the last solve's stays ≤ 4 M Dijkstra steps (counted, so
-  it's deterministic; ~5 M/s here, ~0.5 M per solve on the real account). Worlds whose first
+  it's deterministic; ~5 M/s here, ~0.5 M per solve on the real account). The candidate
+  pairs (distances, per-source sort, K-nearest prune) are built once; each solve under a cap
+  takes a prefix of each source's list (no distances or sorting again): its setup is linear
+  in the edges, far below its Dijkstra steps, so the budget leaves it out. Worlds whose first
   solve takes > ~0.4 s get that one solve, as before. Measured: tiny worlds still equal the
   brute-force package count (400/400); the real account (fixture
   `academy-heavy-production.js`) 71 / 0:31 in ~120 ms → **72 / 0:19 in ~0.6 s** (6 solves).
