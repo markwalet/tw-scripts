@@ -411,8 +411,9 @@ Export/import and schema migration follow timetool2's `settings.js`.
   reports minus the merchants to keep home (they are limits the user set, not only what
   the game would refuse). The fallback list leaves skipped cards out and checks its rows
   the same way once, when it is built, against the numbers earlier `call` answers
-  reported; its own `map_send` answers (shape unverified) are not read. Smoke scenarios `precheck`
-  and `failure-record` (stubbed game with real per-source stock below the overview).
+  reported; its own `map_send` answers (shape unverified) are not read. Smoke scenarios
+  `precheck`, `fallback-precheck` and `failure-record` (stubbed game with real per-source
+  stock below the overview).
 
 ## 8. Out of scope
 

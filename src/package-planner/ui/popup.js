@@ -98,6 +98,9 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   /** @returns {{ rows: Row[] | null, status: Map<number | string, 'pending' | 'sent' | 'failed' | 'skipped'>, failure: Outcome | null, locked: boolean, left: Map<number, Left>, checks: Map<number, Check> }} */
   const fresh = () => ({ rows: null, status: new Map(), failure: null, locked: false, left: new Map(), checks: new Map() });
   let send = fresh();
+  /** The plan's transports per target, grouped once per view. @type {Map<number, Transport[]>} */
+  let byTarget = new Map();
+  const plannedFor = (/** @type {number} */ id) => byTarget.get(id) ?? [];
   let focusNext = false;
   /** @type {HTMLElement | null} */
   let firstSend = null;
@@ -114,9 +117,11 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     s.locked = true;
     s.status.set(key, 'pending');
     const payload = req.action === 'call' ? requestPayload(req.sent, req.target) : transportPayload(req.sent[0]);
+    // What was known when the request went out (later answers or a new plan change both).
+    const known = { snapshot: view.status === 'done' ? view.places : new Map(), left: new Map(s.left) };
     post(req.action, req.action === 'call' ? req.target : req.sent[0].from, payload).then((o) => {
       // Evidence first (also for an answer to an old list): kept until the popup closes.
-      if (!o.ok) onFailure(failureRecord({ ...req, outcome: o, snapshot: view.status === 'done' ? view.places : new Map(), left: s.left }));
+      if (!o.ok) onFailure(failureRecord({ ...req, ...known, outcome: o }));
       if (s !== send) return;
       if (o.ok) {
         s.status.set(key, 'sent');
@@ -159,7 +164,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     if (view.status !== 'done' || send.rows) return;
     for (const c of view.plan.cards) {
       if (send.status.has(c.id)) continue;
-      const chk = checkCard(view.transports, c.id, send.left, { cost: view.cost, packages: c.packages, ...view.limits });
+      const chk = checkCard(plannedFor(c.id), c.id, send.left, { cost: view.cost, packages: c.packages, ...view.limits });
       if (!chk.short.length) send.checks.delete(c.id);
       else if (chk.transports.length) send.checks.set(c.id, chk);
       else send.status.set(c.id, 'skipped');
@@ -171,12 +176,13 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
 
   /**
    * Switch to one transport per click, for every target the game did not confirm (failed
-   * ones included). Only once every request answered: a pending one may still succeed.
+   * ones included; skipped ones stay out), checked against what the game last reported.
+   * Only once every request answered: a pending one may still succeed.
    */
   function useFallback() {
     if (view.status !== 'done' || pendingCount()) return;
-    const sent = new Set([...send.status].filter(([, s]) => s === 'sent').map(([k]) => Number(k)));
-    const rows = fallbackRows(view.transports, view.plan.cards.map((c) => c.id), sent, view.places);
+    const done = new Set([...send.status].filter(([, s]) => s === 'sent' || s === 'skipped').map(([k]) => Number(k)));
+    const rows = fallbackRows(view.transports, view.plan.cards.map((c) => c.id), done, view.places, send.left, view.limits);
     send = { ...fresh(), rows, left: send.left };
     focusNext = true;
     render(view);
@@ -234,7 +240,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
   /** @param {Card} c */
   function card(c) {
     const far = fill(t('farthest'), { name: c.farthest.name, x: c.farthest.x, y: c.farthest.y, time: hms(c.lastArrivalSeconds) });
-    const planned = view.status === 'done' ? view.transports.filter((x) => x.to === c.id) : [];
+    const planned = plannedFor(c.id);
     const chk = send.checks.get(c.id);
     const note = send.status.get(c.id) === 'skipped' ? t('skippedNote') : chk?.mayShort ? plural(t, 'reduced', chk.mayShort) : '';
     return h('div', { className: greyed(c.id), 'data-village': c.id }, [
@@ -325,6 +331,14 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     if (next !== view) {
       send = fresh();
       focusNext = next.status === 'done';
+      byTarget = new Map();
+      if (next.status === 'done') {
+        for (const x of next.transports) {
+          const list = byTarget.get(x.to);
+          if (list) list.push(x);
+          else byTarget.set(x.to, [x]);
+        }
+      }
     }
     view = next;
     firstSend = null;

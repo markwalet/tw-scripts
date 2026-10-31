@@ -13,7 +13,8 @@
 // #16 (stubbed game with real per-source stock): precheck = after a successful answer the
 // next card whose source the game reports short is trimmed/marked before its send;
 // failure-record = a failed send leaves the request, answer and per-source numbers in
-// "Copy debug info", also after Recalculate.
+// "Copy debug info", also after Recalculate; fallback-precheck = the fallback list after a
+// failure leaves out a source the game reports short.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -247,6 +248,15 @@ async function driver(scenario) {
       const payload = (to) => window.__posts.find((p) => String(p.params.village) === to)?.data;
       check('card order of the fixture plan', ids().join() === '103,303,405,105,205,203,403', ids());
       check('collapsed line says production is not counted', $$('.pp-chipline span')[0].textContent.endsWith(' · target production not counted'), $$('.pp-chipline span')[0].textContent);
+      if (scenario.name === 'fallback-precheck') {
+        await sendAll(6); // 103 303 405 105 205 ok (201: 500 iron left); 203 fails: 202 has 500 iron
+        await until(() => $$('.pp-fallback').length && !$$('.pp-fallback')[0].disabled);
+        $$('.pp-fallback')[0].click();
+        await sleep(50);
+        const into = (id) => $$(`.pp-card[data-to="${id}"]`).length;
+        check('fallback: unsent targets only, source the game reports short left out', into(203) === 2 && into(403) === 3 && $$('.pp-card').length === 5, { 203: into(203), 403: into(403), all: $$('.pp-card').length });
+        throw 'done';
+      }
       if (scenario.name === 'precheck') {
         await sendAll(3); // 103, 303, 405: the game now reports 301 has 5,300 iron left
         const reduced = $$('.pp-card').filter((c) => /reduced/i.test(c.textContent)).map((c) => c.getAttribute('data-village'));
@@ -365,6 +375,8 @@ const scenarios = [
   // 50,294 and 109,823). These stock scenarios are derived from one plan, so they plan
   // without the targets' production (#18): the send checks don't move with the solver.
   { name: 'precheck', settings: { countProduction: false }, stock: { 301: { res: [9e5, 9e5, 18300] }, 201: { res: [9e5, 9e5, 6313] } } },
+  // Fallback after a failure: 201's 500 iron left (reported) drops its row into 203.
+  { name: 'fallback-precheck', settings: { countProduction: false }, stock: { 201: { res: [9e5, 9e5, 6313] }, 202: { res: [9e5, 9e5, 500] } } },
   // #16: 204 really has 1,000 wood (overview 30,879): card 205 fails, evidence kept.
   { name: 'failure-record', settings: { countProduction: false }, stock: { 204: { res: [1000, 9e5, 9e5] } } },
 ];
