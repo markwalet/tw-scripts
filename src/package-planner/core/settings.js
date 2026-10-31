@@ -14,6 +14,7 @@ import { RES } from './world-config.js';
  *   reserve: [number, number, number], wood, clay, iron kept in every sender
  *   keepMerchants: number,
  *   bufferPct: number,                 warehouse buffer (on top of the production margin)
+ *   countProduction: boolean,          count each target's own production until its last arrival
  *   nobles: number | null,             collect for this many new nobles; null = as many packages as possible
  *   senderGroup: number,               village group id, 0 = all
  *   receiverGroup: number,
@@ -22,7 +23,7 @@ import { RES } from './world-config.js';
  */
 
 /** @returns {Settings} */
-const defaults = () => ({ maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2, nobles: null, senderGroup: 0, receiverGroup: 0, groups: [] });
+const defaults = () => ({ maxTravelSeconds: null, reserve: [0, 0, 0], keepMerchants: 0, bufferPct: 2, countProduction: true, nobles: null, senderGroup: 0, receiverGroup: 0, groups: [] });
 
 /** A non-negative finite number, else the fallback. @param {unknown} v @param {number} fallback */
 const amount = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback);
@@ -46,6 +47,7 @@ function migrate(raw, base) {
     reserve: /** @type {Settings['reserve']} */ (base.reserve.map((d, k) => Math.floor(amount(reserve[k], d)))),
     keepMerchants: Math.floor(amount(raw.keepMerchants, base.keepMerchants)),
     bufferPct: amount(raw.bufferPct, base.bufferPct),
+    countProduction: typeof raw.countProduction === 'boolean' ? raw.countProduction : base.countProduction,
     nobles: Math.floor(amount(raw.nobles, 0)) || null,
     senderGroup: groupId(raw.senderGroup),
     receiverGroup: groupId(raw.receiverGroup),
@@ -65,9 +67,10 @@ export const solverOptions = (s, maxPackages = Infinity) => ({
   reserve: /** @type {Settings['reserve']} */ ([...s.reserve]),
   keepMerchants: s.keepMerchants,
   bufferPct: s.bufferPct,
+  countProduction: s.countProduction,
 });
 
-/** @typedef {{ maxTravel: string, wood: string, stone: string, iron: string, keepMerchants: string, bufferPct: string, nobles: string, senderGroup: string, receiverGroup: string }} FormFields */
+/** @typedef {{ maxTravel: string, wood: string, stone: string, iron: string, keepMerchants: string, bufferPct: string, countProduction: string, nobles: string, senderGroup: string, receiverGroup: string }} FormFields */
 
 /** "3:00" -> 10800 s; "" -> null; h, h:mm or h:mm:ss; anything else -> undefined. @param {string} v */
 function parseDuration(v) {
@@ -112,7 +115,7 @@ export function readForm(f, current) {
   const bufferPct = take('bufferPct', parsePct(f.bufferPct.trim()), current.bufferPct);
   const nobles = take('nobles', parseCount(f.nobles.trim()), current.nobles) || null;
   return {
-    settings: { ...current, maxTravelSeconds, reserve: /** @type {Settings['reserve']} */ (reserve), keepMerchants, bufferPct, nobles, senderGroup: +f.senderGroup || 0, receiverGroup: +f.receiverGroup || 0 },
+    settings: { ...current, maxTravelSeconds, reserve: /** @type {Settings['reserve']} */ (reserve), keepMerchants, bufferPct, countProduction: !!f.countProduction, nobles, senderGroup: +f.senderGroup || 0, receiverGroup: +f.receiverGroup || 0 },
     invalid,
   };
 }
@@ -128,6 +131,8 @@ export const formFields = (s) => ({
   iron: String(s.reserve[2]),
   keepMerchants: String(s.keepMerchants),
   bufferPct: String(s.bufferPct),
+  /** A checkbox: '1' = ticked. */
+  countProduction: s.countProduction ? '1' : '',
   nobles: String(s.nobles ?? ''),
   senderGroup: String(s.senderGroup),
   receiverGroup: String(s.receiverGroup),
@@ -138,7 +143,8 @@ export const groupName = (s, id, t) => (id ? s.groups.find((g) => g[0] === id)?.
 
 /**
  * The collapsed settings line:
- * "Max 3:00 · reserve 0/0/0 · keep 0 merchants · buffer 2% · All → All" (+ " · nobles: 3").
+ * "Max 3:00 · reserve 0/0/0 · keep 0 merchants · buffer 2% · All → All" (+ " · nobles: 3",
+ * + " · target production not counted" when that is off: other scripts may spend it).
  * @param {Settings} s @param {(key: string) => string} t
  */
 export function settingsLine(s, t) {
@@ -149,5 +155,5 @@ export function settingsLine(s, t) {
     plural(t, 'settingKeep', s.keepMerchants),
     fill(t('settingBuffer'), { pct: s.bufferPct }),
     `${groupName(s, s.senderGroup, t)} → ${groupName(s, s.receiverGroup, t)}`,
-  ].concat(s.nobles ? fill(t('settingNobles'), { n: s.nobles }) : []).join(' · ');
+  ].concat(s.nobles ? fill(t('settingNobles'), { n: s.nobles }) : [], s.countProduction ? [] : t('settingNoProduction')).join(' · ');
 }

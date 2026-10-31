@@ -62,9 +62,11 @@ export function verifyPlan(world, options, plan) {
       const homeLeft = v.res[k] - o_[k];
       if (o_[k] > 0 && homeLeft < o.reserve[k]) errors.push(`village ${v.id}: res ${k} drops to ${homeLeft}, below reserve`);
       const final = Math.min(v.res[k] + inflight[k], v.storage) - o_[k] + i_[k];
-      if (final < n * o.cost[k]) errors.push(`academy ${v.id}: res ${k} ends at ${final}, ${n} packages need ${n * o.cost[k]}`);
+      const prod = v.production ? v.production[k] : 0;
+      // Counting production: what the academy makes until its last arrival counts too.
+      const made = o.countProduction ? Math.floor((prod * (longest.get(v.id) || 0)) / 3600) : 0;
+      if (final + made < n * o.cost[k]) errors.push(`academy ${v.id}: res ${k} ends at ${final} + ${made} produced, ${n} packages need ${n * o.cost[k]}`);
       if (i_[k] > 0) {
-        const prod = v.production ? v.production[k] : 0;
         const limit = v.storage * (1 - o.bufferPct / 100) - (prod * (longest.get(v.id) || 0)) / 3600;
         if (final > limit + 1e-6) errors.push(`academy ${v.id}: res ${k} ends at ${final}, over warehouse limit ${Math.floor(limit)}`);
       }

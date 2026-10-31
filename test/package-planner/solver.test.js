@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { solve } from '../../src/package-planner/core/solver.js';
 import { verifyPlan } from './fixtures/verify-plan.js';
-import { generateTinyWorld } from './fixtures/world-gen.js';
+import { generateTinyWorld, generateWorld } from './fixtures/world-gen.js';
 import { bruteForce, planModelCost } from './fixtures/brute-force.js';
 import { balancerFailures } from './fixtures/balancer-failures.js';
 import { academyHeavy } from './fixtures/academy-heavy.js';
@@ -218,6 +218,67 @@ test("production margin: the plan's own longest arrival counts, not the farthest
   const plan = solveValid(world, { cost: [24000, 24400, 24000] });
   assert.equal(plan.packages, 4);
   assert.deepEqual(plan.transports.map((t) => t.from), [2]);
+});
+
+test("counting production: the target's own production until its last arrival replaces part of the transport", () => {
+  // Iron short by a whole package (25k); the only source is 5 fields away (1800 s) and the
+  // academy makes 10k iron/hour: 5k of it is there when the transport arrives.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [28000, 30000, 0], 0, { production: [0, 0, 10000] }),
+      village(2, 503, 504, [90000, 90000, 90000]),
+    ],
+  };
+  const off = solveValid(world);
+  assert.deepEqual(off.transports, [{ from: 2, to: 1, res: [0, 0, 25000], merchants: 25, seconds: 1800 }]);
+  const on = solveValid(world, { countProduction: true });
+  assert.equal(on.packages, 1);
+  assert.deepEqual(on.transports, [{ from: 2, to: 1, res: [0, 0, 20000], merchants: 20, seconds: 1800 }]);
+});
+
+test('counting production: when it covers the whole shortfall, one load of the last delivery stays', () => {
+  // 2k iron short; 5k is made during the 1800 s trip. Without any transport there is no
+  // arrival to count production until, so one load of the farthest delivery is kept.
+  const world = {
+    villages: [
+      academy(1, 500, 500, [28000, 30000, 23000], 0, { production: [0, 0, 10000] }),
+      village(2, 503, 504, [0, 0, 90000]),
+    ],
+  };
+  assert.deepEqual(solveValid(world).transports.map((t) => t.res), [[0, 0, 2000]]);
+  assert.deepEqual(solveValid(world, { countProduction: true }).transports.map((t) => t.res), [[0, 0, 1000]]);
+});
+
+test('counting production: random worlds with production stay valid and never lose packages', () => {
+  let gained = 0;
+  for (let seed = 1; seed <= 400; seed++) {
+    const { world, options } = generateTinyWorld(seed);
+    const off = solveValid(world, options);
+    const on = solveValid(world, { ...options, countProduction: true });
+    assert.ok(on.packages >= off.packages, `seed ${seed}: ${on.packages} < ${off.packages}`);
+    if (on.packages > off.packages) gained++;
+  }
+  assert.ok(gained > 0, 'production never added a package');
+  // Mid-size worlds: many academies, so one academy's pin re-routes another's deliveries.
+  for (let seed = 1; seed <= 12; seed++) {
+    const world = generateWorld({ seed, villages: 60, academies: 30, production: true, maxMerchants: seed % 3 ? undefined : 60 });
+    const off = solveValid(world, SINGLE_SOLVE);
+    const on = solveValid(world, { ...SINGLE_SOLVE, countProduction: true });
+    assert.ok(on.packages >= off.packages, `mid-size seed ${seed}: ${on.packages} < ${off.packages}`);
+    assert.ok(on.packages > off.packages || on.merchants <= off.merchants, `mid-size seed ${seed}: more merchants for as many packages`);
+  }
+});
+
+test('counting production on the real account: two more packages, fewer merchants, same last arrival', () => {
+  // 63 academies making up to 9504/hour each. Pinning one academy's farthest load moves
+  // flow, so the next academy's farthest delivery is read after it (reading them all first
+  // once pinned a delivery that no longer carried anything: an invalid plan).
+  const { world, options } = academyHeavyProduction;
+  const off = solveValid(world, options);
+  const on = solveValid(world, { ...options, countProduction: true });
+  assert.deepEqual([off.packages, off.longestSeconds], [72, 1140]);
+  assert.deepEqual([on.packages, on.longestSeconds], [74, 1140]);
+  assert.ok(on.merchants < off.merchants, `${on.merchants} vs ${off.merchants} merchants`);
 });
 
 test('villages outside the sender group never send', () => {

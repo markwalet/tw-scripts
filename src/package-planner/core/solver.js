@@ -60,6 +60,9 @@ export const DEFAULTS = Object.freeze({
    *  rounded to the second (checked against the market page); unit_speed doesn't apply. */
   worldSpeed: 1,
   bufferPct: 2,
+  /** Count each academy's own production until its last planned arrival toward its packages
+   *  (the setting, default on in the popup). Off: only what it holds and what is on the way. */
+  countProduction: false,
   /** Noble target: stop at this many packages. */
   maxPackages: Infinity,
   /** Prune: each source only ships to its K nearest academies… */
@@ -204,15 +207,17 @@ function buildModel(/** @type {{ villages: Village[] }} */ world, /** @type {typ
   const bound = Math.min(
     o.maxPackages,
     info.reduce((sum, x) => sum + x.max, 0),
-    ...[0, 1, 2].map((k) => Math.floor(villages.reduce((sum, v) => sum + v.res[k] + (v.inflight ? v.inflight[k] : 0), 0) / c[k])),
+    ...[0, 1, 2].map((k) => Math.floor((villages.reduce((sum, v) => sum + v.res[k] + (v.inflight ? v.inflight[k] : 0), 0)
+      + (o.countProduction ? academies.reduce((sum, a, i) => sum + ((a.production ? a.production[k] : 0) * longest[i]) / 3600, 0) : 0)) / c[k])),
   );
   const merchants = senders.reduce((sum, v) => sum + v.merchants - o.keepMerchants, 0);
 
   return {
     o, academies, senders, aIndex, edges, info, bound, merchants,
-    /** Units of resource k academy ai still needs for n packages. */
-    deficit: (/** @type {number} */ ai, /** @type {number} */ n, /** @type {number} */ k) =>
-      Math.ceil(Math.max(0, n * c[k] - info[ai].own[k]) / U),
+    /** Units of resource k academy ai still needs for n packages, `credit` of its own
+     *  production counted. */
+    deficit: (/** @type {number} */ ai, /** @type {number} */ n, /** @type {number} */ k, credit = 0) =>
+      Math.ceil(Math.max(0, n * c[k] - info[ai].own[k] - credit) / U),
     /** Whole units a village may ship of resource k; an academy keeps what its n packages need. */
     exportable: (/** @type {Village} */ v, /** @type {number} */ n, /** @type {number} */ k) => {
       const ai = aIndex.get(v);
@@ -228,9 +233,16 @@ function buildModel(/** @type {{ villages: Village[] }} */ world, /** @type {typ
  * @param {number} penalty
  */
 function optimise(model, penalty) {
-  const { o, academies, senders, aIndex, edges, info, deficit, exportable } = model;
+  const { o, academies, senders, aIndex, edges, info, exportable } = model;
   const U = o.merchantCapacity;
   const c = o.cost;
+  /** Own production counted per academy and resource (#18), and the merchant loads pinned
+   *  outside the network so the arrival it was counted for stays (see below). */
+  const credit = academies.map(() => [0, 0, 0]);
+  /** @type {{ e: number, k: number }[]} */
+  const pins = [];
+  const pinOut = new Int32Array(3 * senders.length);
+  const deficit = (/** @type {number} */ a, /** @type {number} */ n, /** @type {number} */ k) => model.deficit(a, n, k, credit[a][k]);
 
   // Network: S = 0, V_s, P_sk, D_ak.
   const V = (/** @type {number} */ s) => 1 + s;
@@ -239,11 +251,14 @@ function optimise(model, penalty) {
   const net = new FlowNetwork(1 + 4 * senders.length + 3 * academies.length);
   /** Export arcs of academies that also send: academy index -> arc per resource. */
   const exportArcs = new Map();
+  /** @type {number[][]} */
+  const stockArcs = [];
   const merchantArcs = senders.map((v, s) => {
     const arc = net.addArc(0, V(s), v.merchants - o.keepMerchants, 0);
     const arcs = [0, 1, 2].map((k) => net.addArc(V(s), P(s, k), exportable(v, 0, k), 0));
+    stockArcs.push(arcs);
     const ai = aIndex.get(v);
-    if (ai !== undefined) exportArcs.set(ai, arcs);
+    if (ai !== undefined) exportArcs.set(ai, { arcs, s });
     return arc;
   });
   const shipArcs = edges.map((e) => [0, 1, 2].map((k) => net.addArc(P(e.s, k), D(e.a, k), BIG, Math.round(e.d * 100) + penalty)));
@@ -264,8 +279,8 @@ function optimise(model, penalty) {
     total += by;
     for (let k = 0; k < 3; k++) {
       net.addDemand(D(a, k), deficit(a, n[a], k) - deficit(a, n[a] - by, k));
-      const arcs = exportArcs.get(a);
-      if (arcs) net.setCap(arcs[k], exportable(academies[a], n[a], k));
+      const ex = exportArcs.get(a);
+      if (ex) net.setCap(ex.arcs[k], exportable(academies[a], n[a], k) - pinOut[3 * ex.s + k]);
     }
     return net.resolve();
   };
@@ -351,27 +366,91 @@ function optimise(model, penalty) {
     }
   }
 
+  /** @type {number[][]} edge indices into each academy */
+  const into = academies.map(() => []);
+  edges.forEach((e, i) => into[e.a].push(i));
+  /** Academy a's farthest planned delivery now (edge index, -1 = none; a pinned load counts). */
+  const farthest = (/** @type {number} */ a) => {
+    let far = -1;
+    for (const i of into[a]) {
+      if ((far < 0 || edges[i].seconds > edges[far].seconds) && shipArcs[i].some((arc) => net.flow(arc) > 0)) far = i;
+    }
+    for (const p of pins) if (edges[p.e].a === a && (far < 0 || edges[p.e].seconds > edges[far].seconds)) far = p.e;
+    return far;
+  };
+
   // Production margin, narrowed. It is circular: the margin limits the plan, and the plan
   // sets the longest arrival. The greedy above assumed the longest CANDIDATE trip into each
   // academy (safe). An academy now held at that cap gets the margin of its own longest
   // planned arrival instead, and from here on only takes deliveries that arrive no later
   // (its longer arcs close). Then the greedy goes on in the same network. Valid by
   // construction, no second solve.
-  const horizon = new Array(academies.length).fill(-1);
-  edges.forEach((e, i) => {
-    if (shipArcs[i].some((arc) => net.flow(arc) > 0)) horizon[e.a] = Math.max(horizon[e.a], e.seconds);
+  const horizon = academies.map((_, a) => {
+    const i = farthest(a);
+    return i < 0 ? -1 : edges[i].seconds;
   });
-  alive = academies.map((_, a) => {
+  const raised = academies.map((_, a) => {
     if (n[a] < max[a] || horizon[a] < 0) return false;
     const m = info[a].fit(horizon[a]);
     if (m <= max[a]) return false;
     max[a] = m;
     return true;
   });
+  alive = raised;
   if (alive.some(Boolean)) {
     edges.forEach((e, i) => {
-      if (alive[e.a] && e.seconds > horizon[e.a]) for (const arc of shipArcs[i]) net.setCap(arc, 0);
+      if (raised[e.a] && e.seconds > horizon[e.a]) for (const arc of shipArcs[i]) net.setCap(arc, 0);
     });
+    epoch++;
+    budget = Infinity;
+    fill();
+  }
+
+  // Own production until arrival (#18). Circular as well: what an academy makes before its
+  // packages are complete depends on the plan's last arrival into it. So it is counted only
+  // now, for the farthest delivery the plan makes, and one merchant load of that delivery
+  // is pinned: taken out of the network (the source's merchants and stock, the academy's
+  // demand), so no later re-routing can drop it. The arrival, and with it the production
+  // counted, stays in the plan. The pinned resource is the one that still needs the most,
+  // and keeps at least one full load. From here on packages are only added, so the pinned
+  // load stays needed. It comes last, on top of the plan without it: a pin ties a load to
+  // a far source that the greedy could otherwise have used for another package, and it
+  // comes after the margin's arcs closed, so no re-routing moves a delivery past the
+  // horizon a margin was narrowed for. Then every academy may take more packages.
+  /** @returns {number} academies credited */
+  const pinProduction = () => {
+    // One academy at a time: each pin re-routes flow, so the next farthest delivery is read
+    // after it.
+    let pinned = 0;
+    academies.forEach((v, a) => {
+      const i = v.production && n[a] ? farthest(a) : -1;
+      if (i < 0) return;
+      const prod = /** @type {Res} */ (v.production);
+      const e = edges[i];
+      const got = prod.map((p) => Math.floor((p * e.seconds) / 3600));
+      const left = (/** @type {number} */ k) => n[a] * c[k] - info[a].own[k] - got[k];
+      let k = -1;
+      for (let r = 0; r < 3; r++) if (net.flow(shipArcs[i][r]) > 0 && (k < 0 || left(r) > left(k))) k = r;
+      if (k < 0) return;
+      const was = [0, 1, 2].map((r) => deficit(a, n[a], r));
+      const cp = net.checkpoint();
+      credit[a] = got.map((g, r) => (r === k ? Math.min(g, Math.max(0, n[a] * c[r] - info[a].own[r] - U)) : g));
+      const total = (/** @type {number} */ arc) => net.cap[arc] + net.flow(arc);
+      net.addDemand(D(a, k), -1);
+      net.setCap(merchantArcs[e.s], total(merchantArcs[e.s]) - 1);
+      net.setCap(stockArcs[e.s][k], total(stockArcs[e.s][k]) - 1);
+      for (let r = 0; r < 3; r++) net.addDemand(D(a, r), deficit(a, n[a], r) - was[r]);
+      if (!net.resolve()) { net.rollback(cp); credit[a] = [0, 0, 0]; return; }
+      net.commit();
+      pins.push({ e: i, k });
+      pinOut[3 * e.s + k]++;
+      pinned++;
+    });
+    return pinned;
+  };
+
+  if (o.countProduction && pinProduction()) {
+    alive = n.map((x, a) => x < max[a]);
     epoch++;
     budget = Infinity;
     fill();
@@ -383,23 +462,25 @@ function optimise(model, penalty) {
   const readBack = () => {
     /** @type {Map<string, Transport & { d: number, s: number }>} */
     const byPair = new Map();
-    edges.forEach((e, i) => {
-      for (let k = 0; k < 3; k++) {
-        const units = net.flow(shipArcs[i][k]);
-        if (!units) continue;
-        const id = `${e.s},${e.a}`;
-        let t = byPair.get(id);
-        if (!t) {
-          t = { from: senders[e.s].id, to: academies[e.a].id, res: [0, 0, 0], merchants: 0, seconds: e.seconds, d: e.d, s: e.s };
-          byPair.set(id, t);
-        }
-        t.res[k] += units * U;
+    /** Add `units` loads of resource k along edge i (the flow, or a pinned load). */
+    const add = (/** @type {number} */ i, /** @type {number} */ k, /** @type {number} */ units) => {
+      const e = edges[i];
+      const id = `${e.s},${e.a}`;
+      let t = byPair.get(id);
+      if (!t) {
+        t = { from: senders[e.s].id, to: academies[e.a].id, res: [0, 0, 0], merchants: 0, seconds: e.seconds, d: e.d, s: e.s };
+        byPair.set(id, t);
       }
+      t.res[k] += units * U;
+    };
+    edges.forEach((_, i) => {
+      for (let k = 0; k < 3; k++) if (net.flow(shipArcs[i][k])) add(i, k, net.flow(shipArcs[i][k]));
     });
+    for (const p of pins) add(p.e, p.k, 1);
     const transports = [...byPair.values()];
     academies.forEach((a, ai) => {
       const into = transports.filter((t) => t.to === a.id).sort((p, q) => q.d - p.d);
-      const over = [0, 1, 2].map((k) => into.reduce((sum, t) => sum + t.res[k], 0) - Math.max(0, n[ai] * c[k] - info[ai].own[k]));
+      const over = [0, 1, 2].map((k) => into.reduce((sum, t) => sum + t.res[k], 0) - Math.max(0, n[ai] * c[k] - info[ai].own[k] - credit[ai][k]));
       // All overshoot off ONE transport if one carries enough of each: those partial loads
       // then share merchants. Else off the farthest deliveries of each resource.
       const one = into.find((t) => t.res.every((x, k) => x >= over[k]));
@@ -440,7 +521,7 @@ function optimise(model, penalty) {
     merchants: result.reduce((sum, t) => sum + t.merchants, 0),
     longestSeconds: result.reduce((m, t) => Math.max(m, t.seconds), 0),
     resourceHours: result.reduce((sum, t) => sum + ((t.res[0] + t.res[1] + t.res[2]) * t.seconds) / 3600, 0),
-    merchantsLeft: avail.reduce((sum, m, s) => sum + m - net.flow(merchantArcs[s]), 0),
+    merchantsLeft: avail.reduce((sum, m, s) => sum + m - net.flow(merchantArcs[s]) - pinOut[3 * s] - pinOut[3 * s + 1] - pinOut[3 * s + 2], 0),
     work: net.work,
   };
 }

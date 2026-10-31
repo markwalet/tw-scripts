@@ -32,6 +32,7 @@ function stubs(fx, scenario) {
   const mobile = scenario.name === 'mobile-sitter';
   localStorage.clear();
   if (scenario.nobles) localStorage.setItem('en1pp_settings', JSON.stringify({ version: 1, nobles: scenario.nobles }));
+  if (scenario.settings) localStorage.setItem('en1pp_settings', JSON.stringify({ version: 1, ...scenario.settings }));
   window.game_data = { world: 'en1', market: 'en', device: mobile ? 'mobile' : 'desktop', majorVersion: '9', link_base_pure: '/game.php?village=101&screen=',
     player: { id: 1, sitter: mobile ? '7' : '0' }, features: { Premium: { active: true } } };
   window.UI = { SuccessMessage() {}, ErrorMessage() {} };
@@ -245,6 +246,7 @@ async function driver(scenario) {
       const card = (id) => $$(`.pp-card[data-village="${id}"]`)[0];
       const payload = (to) => window.__posts.find((p) => String(p.params.village) === to)?.data;
       check('card order of the fixture plan', ids().join() === '103,303,405,105,205,203,403', ids());
+      check('collapsed line says production is not counted', $$('.pp-chipline span')[0].textContent.endsWith(' · target production not counted'), $$('.pp-chipline span')[0].textContent);
       if (scenario.name === 'precheck') {
         await sendAll(3); // 103, 303, 405: the game now reports 301 has 5,300 iron left
         const reduced = $$('.pp-card').filter((c) => /reduced/i.test(c.textContent)).map((c) => c.getAttribute('data-village'));
@@ -360,10 +362,11 @@ const scenarios = [
   { name: 'config-fails', configFails: 2 },
   { name: 'run-twice', twice: true },
   // #16: the real stock of 301 and 201 is below the overview (18,300 and 6,313 iron, not
-  // 50,294 and 109,823).
-  { name: 'precheck', stock: { 301: { res: [9e5, 9e5, 18300] }, 201: { res: [9e5, 9e5, 6313] } } },
+  // 50,294 and 109,823). These stock scenarios are derived from one plan, so they plan
+  // without the targets' production (#18): the send checks don't move with the solver.
+  { name: 'precheck', settings: { countProduction: false }, stock: { 301: { res: [9e5, 9e5, 18300] }, 201: { res: [9e5, 9e5, 6313] } } },
   // #16: 204 really has 1,000 wood (overview 30,879): card 205 fails, evidence kept.
-  { name: 'failure-record', stock: { 204: { res: [1000, 9e5, 9e5] } } },
+  { name: 'failure-record', settings: { countProduction: false }, stock: { 204: { res: [1000, 9e5, 9e5] } } },
 ];
 const dir = mkdtempSync(join(tmpdir(), 'pp-smoke-'));
 let failed = 0;
