@@ -78,14 +78,15 @@ export function checkCard(transports, target, left, { cost, packages, carry = 10
 /** Amounts + merchants of one source. @typedef {{ res: number[], merchants: number }} Load */
 /**
  * @typedef {{ action: string, target: number, reason: string, message: string, raw: unknown,
- *   sources: { id: number, sent: Load, planned: Load | null, overview: Load | null, reported: Load | null }[] }} Failure
+ *   sources: { id: number, sent: Load | null, planned: Load | null, overview: Load | null, reported: Load | null }[] }} Failure
  */
 
 /**
  * The evidence of a failed send, for "Copy debug info": the request (per source what was
- * sent, and the plan's amounts when the pre-check trimmed them), the game's answer, and per
- * source what the overview snapshot showed and what the game last reported. Ids and
- * amounts only (no names).
+ * sent, and the plan's amounts when the pre-check trimmed them; a source it dropped is
+ * listed as sent none), the game's answer, and per source what the overview snapshot
+ * showed and what the game last reported. Ids and amounts only (no names). `snapshot` and
+ * `left` are what the popup knew at click time.
  * @param {{ action: string, target: number, planned: Transport[], sent: Transport[], outcome: Outcome,
  *   snapshot: Map<number, { wood?: number, stone?: number, iron?: number, merchantsAvailable?: number }>, left: Map<number, Left> }} r
  * @returns {Failure}
@@ -94,14 +95,15 @@ export function failureRecord({ action, target, planned, sent, outcome: o, snaps
   const load = (/** @type {Transport} */ t) => ({ res: t.res, merchants: t.merchants });
   return {
     action, target, reason: o.ok ? '' : o.reason, message: o.message, raw: o.ok ? null : o.raw,
-    sources: sent.map((t) => {
-      const p = planned.find((x) => x.from === t.from && x.to === t.to);
-      const v = snapshot.get(t.from);
-      const l = left.get(t.from);
+    sources: [...new Set([...planned, ...sent].map((t) => t.from))].map((id) => {
+      const t = sent.find((x) => x.from === id);
+      const p = planned.find((x) => x.from === id);
+      const v = snapshot.get(id);
+      const l = left.get(id);
       return {
-        id: t.from,
-        sent: load(t),
-        planned: p && (p.merchants !== t.merchants || p.res.some((n, i) => n !== t.res[i])) ? load(p) : null,
+        id,
+        sent: t ? load(t) : null,
+        planned: p && (!t || p.merchants !== t.merchants || p.res.some((n, i) => n !== t.res[i])) ? load(p) : null,
         overview: v ? { res: RES.map((k) => num(v[k])), merchants: num(v.merchantsAvailable) } : null,
         reported: l ? { res: l.res, merchants: l.merchants } : null,
       };

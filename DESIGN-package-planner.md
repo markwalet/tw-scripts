@@ -63,9 +63,11 @@ unknown). Hence (#16):
 - **Evidence is kept automatically.** Every failed send adds a record to "Copy debug info"
   (last 5, until the popup closes; survives Recalculate): action + target village id, the
   game's message and raw answer (scrubbed; an HTTP error keeps only its status), and per
-  source village id: what was sent (plus the plan's amounts when the pre-check trimmed
-  them), the overview snapshot's resources + merchants, and the latest `resources_left` /
-  `traders_free` the game reported for it in earlier successful answers (or `none`).
+  source village id of the plan's card: what was sent (`none` for a source the pre-check
+  dropped; plus the plan's amounts when the pre-check trimmed or dropped it), the overview
+  snapshot's resources + merchants, and the latest `resources_left` / `traders_free` the
+  game reported for it in earlier successful answers (or `none`), both as known at click
+  time.
   Village ids only: no names, coordinates, player ids or tokens.
 - **The game's own numbers are checked before each send** (§7).
 
