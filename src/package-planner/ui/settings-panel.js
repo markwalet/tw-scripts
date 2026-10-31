@@ -47,7 +47,7 @@ export function createSettingsPanel({ t, get, save }) {
     /** @type {Partial<Record<keyof FormFields, HTMLInputElement>>} */
     const inputs = {};
     function onChange() {
-      const fields = /** @type {FormFields} */ (Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value])));
+      const fields = /** @type {FormFields} */ (Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value])));
       const { settings, invalid } = readForm(fields, get());
       save(settings);
       line.textContent = `⚙ ${settingsLine(settings, t)}`;
@@ -60,6 +60,9 @@ export function createSettingsPanel({ t, get, save }) {
     /** @param {keyof FormFields} k @param {number} width */
     const input = (k, width) =>
       (inputs[k] = /** @type {HTMLInputElement} */ (h('input', { type: 'text', value: f[k], size: width, on: { change: onChange } })));
+    /** A checkbox: its form field is '1' when ticked. @param {keyof FormFields} k */
+    const check = (k) =>
+      (inputs[k] = /** @type {HTMLInputElement} */ (h('input', { type: 'checkbox', checked: f[k] ? 'checked' : null, on: { change: onChange } })));
     /** A group dropdown: All + the groups last read from an overview. @param {'senderGroup' | 'receiverGroup'} k */
     const group = (k) => (inputs[k] = /** @type {HTMLInputElement} */ (h('select', { on: { change: onChange } },
       [[0, t('allGroups')], ...get().groups].map(([id, name]) => h('option', { value: id, text: name, selected: `${id}` === f[k] || null })))));
@@ -72,6 +75,7 @@ export function createSettingsPanel({ t, get, save }) {
       row('reserveLabel', [...res('wood'), ...res('stone'), ...res('iron')], 'reserveHint'),
       row('keepMerchantsLabel', [input('keepMerchants', 4)]),
       row('bufferLabel', [input('bufferPct', 4)], 'bufferHint'),
+      row('productionLabel', [check('countProduction')], 'productionHint'),
       row('senderGroupLabel', [group('senderGroup')]),
       row('receiverGroupLabel', [group('receiverGroup')], 'receiverGroupHint'),
       row('noblesLabel', [input('nobles', 4)], 'noblesHint'),
