@@ -2,6 +2,7 @@
   "name": "tw-timetool2",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "TribalWars attack-timing aid (rewrite of timetool.js). See DESIGN.md.",
   "type": "module",
   "scripts": {

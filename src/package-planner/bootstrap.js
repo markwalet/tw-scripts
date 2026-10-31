@@ -25,10 +25,8 @@ import { createSettingsPanel } from './ui/settings-panel.js';
 
 const t = makeTranslator(resolveLang('auto', tw.market()));
 
-// SCRIPT LIBRARY AUTHOR — decide before the forum submission: the name and contact e-mail
-// TW's ScriptAPI shows for this script. TW rejects an empty e-mail on a hosted script; the
-// adapter then skips registering and the planner still runs.
-const AUTHOR = { name: 'markwalet', email: '' };
+// SCRIPT LIBRARY AUTHOR: the name and contact e-mail TW's ScriptAPI shows for this script.
+const AUTHOR = { name: 'markwalet', email: 'scripts@tw-tracker.net' };
 
 tw.register(t('scriptName'), true, AUTHOR.name, AUTHOR.email);
 
