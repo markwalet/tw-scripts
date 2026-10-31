@@ -192,6 +192,38 @@ fix for what existing balancers get wrong (see §9).
   more, but always needed 2 extra solves: up to 3× the time on scarce worlds), at no
   measurable time cost. On the user's real account (63 academies, ≤ 9504/h, longest
   trip ~32 min, warehouses far from full) the plan is unchanged: 71 packages either way.
+- **Own production until arrival** (#18, user decision 2026-10-30; setting, default on).
+  An academy's packages may use what it makes until its **last planned arrival** *T[a]*:
+  `present + in-flight + production[a][k] × T[a] + inbound ≥ n[a] × cost[k]`. Same rates as
+  the margin above (zero extra requests); the warehouse limit still applies to the total
+  (the margin's formula already counts that production). Production at **sources** stays
+  ignored. Off: as before. The setting exists because other scripts may spend a target's
+  resources during the trip, so its production may not stay. Packages completed partly by
+  production count as "from these transports" in the summary.
+- **Production credit is circular too**: it depends on *T[a]*, which the plan sets, and
+  here the safe side is the *shortest* arrival, not the longest (credit for a trip the plan
+  doesn't make is a package that isn't there on time). So it is counted last in each solve,
+  on top of the plan without it: (1) the greedy, local search and margin narrowing run as
+  before; (2) for each academy with a planned delivery, its own production until its
+  farthest planned delivery is credited, and **one merchant load of that delivery is
+  pinned**: taken out of the network (the source's merchants and stock, the academy's
+  demand), so no later re-routing can drop it and *T[a]* only grows. The pinned resource is
+  the one that still needs the most, and keeps at least one full load (so when production
+  alone would cover the shortfall, one load of the last delivery remains: there has to be an
+  arrival to count production until); (3) the greedy continues for every academy. One
+  academy at a time, since each pin re-routes flow (reading all farthest deliveries first
+  pinned loads that no longer existed: an invalid plan). After the margin narrowing, so no
+  re-routing moves a delivery past a narrowed margin's horizon; last, because pinning
+  earlier tied loads to far sources that the greedy then lacked (−1 to −3 packages on a
+  synthetic 500/120 world). The travel-cap search (#17) bounds *T[a]* from above, so the
+  credit never stretches the plan: waiting longer is not a way to more packages. Measured:
+  never fewer packages than without (single solves on 500/120 production worlds, 400 tiny
+  and 12 mid-size random worlds, all checked by `verify-plan`). Real saved pages (63
+  academies, ≤ 9504/h): **off 72 packages / last arrival 0:19 / 1108 merchants → on 74 /
+  0:19 / 1052**; fixture `academy-heavy-production.js` 72 → 74 packages, 1108 → 1074
+  merchants. Synthetic 500/120 production (max 3h, 500–3000/h): same packages and last
+  arrival, ~1% fewer merchants (38,463 → 38,079), +13–15% time (260–575 → 296–664 ms).
+  Bundle 87.8 → 91.3 KB (+3.4 KB, not minified).
 - Source merchant limit: Σ shipped out of *s* ≤ `capacity × m[s]`.
 - Optional cap from the noble target: Σ n[a] ≤ packages still missing.
 
@@ -320,6 +352,7 @@ ignores merchants and distance, so the gap there isn't a solver gap: the LP boun
 | Receiver group | all |
 | Collect for X new nobles | empty = as many packages as possible |
 | Warehouse buffer | 2% (on top of the production margin) |
+| Count production until arrival | on (§5; the collapsed line says "target production not counted" when off) |
 
 Export/import and schema migration follow timetool2's `settings.js`.
 
