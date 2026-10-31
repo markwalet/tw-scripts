@@ -366,12 +366,6 @@ function optimise(model, penalty) {
     }
   }
 
-  // Production margin, narrowed. It is circular: the margin limits the plan, and the plan
-  // sets the longest arrival. The greedy above assumed the longest CANDIDATE trip into each
-  // academy (safe). An academy now held at that cap gets the margin of its own longest
-  // planned arrival instead, and from here on only takes deliveries that arrive no later
-  // (its longer arcs close). Then the greedy goes on in the same network. Valid by
-  // construction, no second solve.
   /** @type {number[][]} edge indices into each academy */
   const into = academies.map(() => []);
   edges.forEach((e, i) => into[e.a].push(i));
@@ -384,18 +378,50 @@ function optimise(model, penalty) {
     for (const p of pins) if (edges[p.e].a === a && (far < 0 || edges[p.e].seconds > edges[far].seconds)) far = p.e;
     return far;
   };
-  // Own production until arrival (#18). Circular as well: what an academy produces before
-  // its packages are complete depends on the plan's last arrival into it. So it is counted
-  // only now, for the farthest delivery the plan makes, and one merchant load of that
-  // delivery is pinned: taken out of the network (the source's merchants and stock, the
-  // academy's demand), so no later re-routing can drop it. The arrival, and with it the
-  // production counted, stays in the plan. The pinned resource is the one that still needs
-  // the most, and keeps at least one full load. From here on packages are only added, so
-  // the pinned load stays needed. Credited academies may then take more packages.
-  const credited = academies.map(() => false);
-  if (o.countProduction) {
+
+  // Production margin, narrowed. It is circular: the margin limits the plan, and the plan
+  // sets the longest arrival. The greedy above assumed the longest CANDIDATE trip into each
+  // academy (safe). An academy now held at that cap gets the margin of its own longest
+  // planned arrival instead, and from here on only takes deliveries that arrive no later
+  // (its longer arcs close). Then the greedy goes on in the same network. Valid by
+  // construction, no second solve.
+  const horizon = academies.map((_, a) => {
+    const i = farthest(a);
+    return i < 0 ? -1 : edges[i].seconds;
+  });
+  const raised = academies.map((_, a) => {
+    if (n[a] < max[a] || horizon[a] < 0) return false;
+    const m = info[a].fit(horizon[a]);
+    if (m <= max[a]) return false;
+    max[a] = m;
+    return true;
+  });
+  alive = raised;
+  if (alive.some(Boolean)) {
+    edges.forEach((e, i) => {
+      if (raised[e.a] && e.seconds > horizon[e.a]) for (const arc of shipArcs[i]) net.setCap(arc, 0);
+    });
+    epoch++;
+    budget = Infinity;
+    fill();
+  }
+
+  // Own production until arrival (#18). Circular as well: what an academy makes before its
+  // packages are complete depends on the plan's last arrival into it. So it is counted only
+  // now, for the farthest delivery the plan makes, and one merchant load of that delivery
+  // is pinned: taken out of the network (the source's merchants and stock, the academy's
+  // demand), so no later re-routing can drop it. The arrival, and with it the production
+  // counted, stays in the plan. The pinned resource is the one that still needs the most,
+  // and keeps at least one full load. From here on packages are only added, so the pinned
+  // load stays needed. It comes last, on top of the plan without it: a pin ties a load to
+  // a far source that the greedy could otherwise have used for another package, and it
+  // comes after the margin's arcs closed, so no re-routing moves a delivery past the
+  // horizon a margin was narrowed for. Then every academy may take more packages.
+  /** @returns {number} academies credited */
+  const pinProduction = () => {
     // One academy at a time: each pin re-routes flow, so the next farthest delivery is read
     // after it.
+    let pinned = 0;
     academies.forEach((v, a) => {
       const i = v.production && n[a] ? farthest(a) : -1;
       if (i < 0) return;
@@ -410,7 +436,7 @@ function optimise(model, penalty) {
       const cp = net.checkpoint();
       credit[a] = got.map((g, r) => (r === k ? Math.min(g, Math.max(0, n[a] * c[r] - info[a].own[r] - U)) : g));
       const total = (/** @type {number} */ arc) => net.cap[arc] + net.flow(arc);
-      net.addDemand(D(e.a, k), -1);
+      net.addDemand(D(a, k), -1);
       net.setCap(merchantArcs[e.s], total(merchantArcs[e.s]) - 1);
       net.setCap(stockArcs[e.s][k], total(stockArcs[e.s][k]) - 1);
       for (let r = 0; r < 3; r++) net.addDemand(D(a, r), deficit(a, n[a], r) - was[r]);
@@ -418,26 +444,13 @@ function optimise(model, penalty) {
       net.commit();
       pins.push({ e: i, k });
       pinOut[3 * e.s + k]++;
-      credited[a] = true;
+      pinned++;
     });
-  }
+    return pinned;
+  };
 
-  const horizon = academies.map((_, a) => {
-    const i = farthest(a);
-    return i < 0 ? -1 : edges[i].seconds;
-  });
-  const raised = academies.map((_, a) => {
-    if (n[a] < max[a] || horizon[a] < 0) return false;
-    const m = info[a].fit(horizon[a]);
-    if (m <= max[a]) return false;
-    max[a] = m;
-    return true;
-  });
-  alive = raised.map((r, a) => r || (credited[a] && n[a] < max[a]));
-  if (alive.some(Boolean)) {
-    edges.forEach((e, i) => {
-      if (raised[e.a] && e.seconds > horizon[e.a]) for (const arc of shipArcs[i]) net.setCap(arc, 0);
-    });
+  if (o.countProduction && pinProduction()) {
+    alive = n.map((x, a) => x < max[a]);
     epoch++;
     budget = Infinity;
     fill();

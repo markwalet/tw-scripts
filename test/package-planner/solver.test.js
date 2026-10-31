@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { solve } from '../../src/package-planner/core/solver.js';
 import { verifyPlan } from './fixtures/verify-plan.js';
-import { generateTinyWorld } from './fixtures/world-gen.js';
+import { generateTinyWorld, generateWorld } from './fixtures/world-gen.js';
 import { bruteForce, planModelCost } from './fixtures/brute-force.js';
 import { balancerFailures } from './fixtures/balancer-failures.js';
 import { academyHeavy } from './fixtures/academy-heavy.js';
@@ -259,6 +259,14 @@ test('counting production: random worlds with production stay valid and never lo
     if (on.packages > off.packages) gained++;
   }
   assert.ok(gained > 0, 'production never added a package');
+  // Mid-size worlds: many academies, so one academy's pin re-routes another's deliveries.
+  for (let seed = 1; seed <= 12; seed++) {
+    const world = generateWorld({ seed, villages: 60, academies: 30, production: true, maxMerchants: seed % 3 ? undefined : 60 });
+    const off = solveValid(world, SINGLE_SOLVE);
+    const on = solveValid(world, { ...SINGLE_SOLVE, countProduction: true });
+    assert.ok(on.packages >= off.packages, `mid-size seed ${seed}: ${on.packages} < ${off.packages}`);
+    assert.ok(on.packages > off.packages || on.merchants <= off.merchants, `mid-size seed ${seed}: more merchants for as many packages`);
+  }
 });
 
 test('counting production on the real account: two more packages, fewer merchants, same last arrival', () => {
