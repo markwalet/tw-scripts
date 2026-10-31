@@ -142,7 +142,9 @@ export function fallbackRows(transports, targets, done, places, left = new Map()
 
 /**
  * @typedef {{ ok: true, message: string, left: Left[] }
- *   | { ok: false, reason: 'game' | 'botProtect' | 'timeout' | 'unavailable', message: string, raw: unknown }} Outcome
+ *   | { ok: false, reason: 'game' | 'http' | 'botProtect' | 'timeout' | 'unavailable', message: string, raw: unknown }} Outcome
+ *   'game' = the game refused this one request (only that card/row failed); every other
+ *   reason stops all sending.
  */
 
 const num = (/** @type {unknown} */ x) => Number(x) || 0;
@@ -150,7 +152,7 @@ const num = (/** @type {unknown} */ x) => Number(x) || 0;
 /**
  * How a request ended, read defensively from TribalWars.post's callbacks: onSuccess gets
  * `json.response`; onError gets the game's message, nothing (bot protection: TW shows its
- * captcha) or the xhr (HTTP error). 'timeout' = no callback at all (TW calls none on 429/503).
+ * captcha) or the xhr (HTTP error: 'http'). 'timeout' = no callback at all (TW calls none on 429/503).
  * Success keeps `transport_info[]` (verified on `call`: per source `village_id`,
  * `resources_left`, `traders_free`) as `left`; a failure keeps the raw answer (xhr: status only).
  * @param {'success' | 'error' | 'timeout' | 'unavailable'} kind
@@ -168,6 +170,6 @@ export function outcome(kind, arg) {
   }
   if (kind !== 'error') return { ok: false, reason: kind, message: '', raw: null };
   if (arg == null) return { ok: false, reason: 'botProtect', message: '', raw: null };
-  const message = Array.isArray(arg) ? arg.join(' ') : typeof arg === 'object' ? `HTTP ${arg.status}` : String(arg);
-  return { ok: false, reason: 'game', message, raw: typeof arg === 'object' && !Array.isArray(arg) ? { status: arg.status } : arg };
+  if (typeof arg === 'object' && !Array.isArray(arg)) return { ok: false, reason: 'http', message: `HTTP ${arg.status}`, raw: { status: arg.status } };
+  return { ok: false, reason: 'game', message: Array.isArray(arg) ? arg.join(' ') : String(arg), raw: arg };
 }
