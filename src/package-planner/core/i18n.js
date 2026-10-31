@@ -52,6 +52,7 @@ const STRINGS = {
     failBotProtect: 'The game asks for a captcha. Solve it, refresh the page and run the script again.',
     failTimeout: 'No answer from the game. Check Market › Transports, then refresh the page and run the script again.',
     failUnavailable: 'Sending is not available on this page. Refresh the page and run the script again.',
+    failRepeated: 'The game refused twice in a row ({message}). Nothing more is sent: refresh the page and run the script again.',
     fallback: 'Send village by village',
     wood: 'Wood',
     stone: 'Clay',
