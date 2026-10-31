@@ -122,7 +122,12 @@ survive only in some positions). So **do not** rely on source comments reaching 
 file. The reviewer-facing "what/why + it's a timing aid, never auto-clicks, read-only"
 summary is the `banner` in `build.mjs` — the one block guaranteed to ship. Update it there.
 
-## Reference files (repo root, NOT bundled)
+## Reference files (repo root, local-only, NOT bundled, NEVER committed)
+
+These are gitignored and must never be committed: none of them is ours to redistribute
+(`game.js` is InnoGames' client, `off-pack.js` a third-party script, `timetool.js` the
+original script). Drop local copies in the repo root to consult them; nothing in `src/`,
+`test/` or `build.mjs` may import them.
 
 - `timetool.js` — the original script being replaced (behavioural reference).
 - `game.js` — TW's compiled client. Source of truth for how `Timing`, `ScriptAPI`,
