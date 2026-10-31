@@ -56,7 +56,7 @@ const CSS = `
  *   | { status: 'error' }
  *   | { status: 'done', plan: PlanView, detail: { merchants: number, academies: number, villages: number },
  *       target: { x: number, stored: number, packages: number, missing: number } | null, warnings: string[],
- *       transports: Transport[], cost: number[],
+ *       transports: Transport[], cost: number[], limits: { reserve: number[], keepMerchants: number },
  *       places: Map<number, { name: string, x: number, y: number, wood?: number, stone?: number, iron?: number, merchantsAvailable?: number }> }} View
  */
 /** @typedef {import('../core/solver.js').Transport} Transport */
@@ -159,7 +159,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     if (view.status !== 'done' || send.rows) return;
     for (const c of view.plan.cards) {
       if (send.status.has(c.id)) continue;
-      const chk = checkCard(view.transports, c.id, send.left, { cost: view.cost, packages: c.packages });
+      const chk = checkCard(view.transports, c.id, send.left, { cost: view.cost, packages: c.packages, ...view.limits });
       if (!chk.short.length) send.checks.delete(c.id);
       else if (chk.transports.length) send.checks.set(c.id, chk);
       else send.status.set(c.id, 'skipped');

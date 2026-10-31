@@ -37,23 +37,25 @@ export const transportPayload = (t) => ({ target_id: t.to, wood: t.res[0], stone
  * `resources_left`/`traders_free` earlier answers reported per source (`left`). A source
  * short on resources or merchants sends what it has, in whole merchant loads (the excess
  * comes off its largest share first: small amounts are the package-completing top-ups);
- * less than one load drops it. No source left = skip the card.
- * @param {Transport[]} transports  the whole plan
+ * less than one load drops it. No source left = skip the card. The user's limits hold here
+ * too: a source may send what the game reports above its reserve, with the merchants it
+ * reports minus the ones to keep home.
+ * @param {Transport[]} transports  the whole plan (or at least the target's transports)
  * @param {number} target
  * @param {Map<number, Left>} left
- * @param {{ cost: number[], packages: number, carry?: number }} o
+ * @param {{ cost: number[], packages: number, carry?: number, reserve?: number[], keepMerchants?: number }} o
  * @returns {{ transports: Transport[], short: number[], mayShort: number }}
  *   mayShort = packages that may no longer complete (the most any one resource's cut covers)
  */
-export function checkCard(transports, target, left, { cost, packages, carry = 1000 }) {
+export function checkCard(transports, target, left, { cost, packages, carry = 1000, reserve = [0, 0, 0], keepMerchants = 0 }) {
   /** @type {number[]} */
   const short = [];
   const cut = [0, 0, 0];
   const out = transports.filter((t) => t.to === target).flatMap((t) => {
     const l = left.get(t.from);
     if (!l) return [t];
-    const a = t.res.map((n, i) => Math.min(n, l.res[i]));
-    const m = Math.min(t.merchants, l.merchants);
+    const a = t.res.map((n, i) => Math.min(n, Math.max(0, l.res[i] - reserve[i])));
+    const m = Math.min(t.merchants, Math.max(0, l.merchants - keepMerchants));
     if (m === t.merchants && a.every((n, i) => n === t.res[i])) return [t];
     short.push(t.from);
     const total = a[0] + a[1] + a[2];

@@ -403,8 +403,10 @@ Export/import and schema migration follow timetool2's `settings.js`.
   resource's cut covers, rounded up: a package needs all three; capped at the card's packages) and its one click sends the trimmed body. No source left
   = the card is skipped (`– Skipped`, greyed, moved down, no request). No extra request:
   only answers already received are used, so a card clicked while an earlier answer is
-  still open is checked against older numbers. Reserves are not re-applied to the game's
-  numbers (the check only stops a request the game would refuse). The fallback rows
+  still open is checked against older numbers. The user's limits hold here too: a source
+  may send what the game reports above its reserve per resource, with the free merchants it
+  reports minus the merchants to keep home (they are limits the user set, not only what
+  the game would refuse). The fallback rows
   (`map_send`, answer shape unverified) are not pre-checked. Smoke scenarios `precheck`
   and `failure-record` (stubbed game with real per-source stock below the overview).
 
