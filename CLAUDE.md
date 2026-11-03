@@ -59,7 +59,7 @@ src/
     core/          PURE: parse-prod / parse-buildings / world-config parsers, overview.js
                    (header `order=` keys, paging), load-overview (page=-1 then paged),
                    parse-incoming (Trader incoming -> in-flight per target; last
-                   info_village link + .wood/.stone/.iron wrapper amounts), storable, preconditions, debug-info (whitelisted, scrubbed), i18n,
+                   info_village link + .wood/.stone/.iron wrapper amounts), storable, preconditions, i18n,
                    solver (§5, incl. merchant rounding), model (overviews -> solver
                    input), plan-view (plan -> summary + cards, h:mm), settings (per-world
                    schema `<world>pp_settings`, migrate, solver options, form parse, line)

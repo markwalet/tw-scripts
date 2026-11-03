@@ -11,7 +11,7 @@ const STRINGS = {
     loading: 'Reading your villages…',
     noPremium: 'This script needs a premium account: it reads the premium village overviews.',
     coinWorld: 'This world uses gold coins, not resource packages. The planner only works on worlds with packages.',
-    failed: 'Something went wrong while reading your villages. The button above tries again; if it keeps failing, use "Copy debug info" and paste it back to the author.',
+    failed: 'Something went wrong while reading your villages. The button above tries again.',
     academyStore: 'Academy › Store',
     calculate: 'Calculate plan',
     recalculate: 'Recalculate',
@@ -84,9 +84,6 @@ const STRINGS = {
     noblesHint: 'empty = as many as possible',
     invalidSetting: 'Not a valid value: the previous one is kept.',
     warnings: 'Warnings',
-    copyDebug: 'Copy debug info',
-    copied: 'Debug info copied',
-    copyManual: 'Copy the text below:',
   },
 };
 

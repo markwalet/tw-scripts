@@ -13,8 +13,7 @@
 // a cached config keeps its time; a failed start retries on Calculate; two runs share 5/s.
 // #16 (stubbed game with real per-source stock): precheck = after a successful answer the
 // next card whose source the game reports short is trimmed/marked before its send;
-// failure-record = a failed send leaves the request, answer and per-source numbers in
-// "Copy debug info", also after Recalculate; fallback-precheck = the fallback list after a
+// failure-record = a game refusal marks only its card, the rest keep sending; fallback-precheck = the fallback list after a
 // failure leaves out a source the game reports short.
 // Review fixes 3: game-error-twice = after a game error focus stays put, a second one in a
 // row stops everything; recalc-pending = Recalculate waits for the pending answer and a
@@ -80,8 +79,6 @@ function stubs(fx, scenario) {
     const text = url.includes('get_config') ? fx.config : url.includes('mode=prod') ? fx.prod : url.includes('mode=buildings') ? fx.buildings : url.includes('screen=snob') ? fx.academy : '';
     return { ok: true, status: 200, text: async () => text };
   };
-  window.__clip = null;
-  Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (s) => { window.__clip = s; } } });
   // `stock`: like the game, a source's REAL stock (may be below the overview snapshot):
   // `call` fails with the game's message when a source has less, else it answers with
   // transport_info (resources_left + traders_free) for every source of the request.
@@ -358,24 +355,11 @@ async function driver(scenario) {
         await sendAll(5); // 103, 303, 405, 105 ok; 205: source 204 really has 1,000 wood (overview: 30,879)
         const err = $$('.pp-error').map((e) => e.textContent).join(' ');
         check('the game\'s failure is shown', err.includes('Not enough resources available'), err);
-        $$('.pp-actions button').find((b) => b.textContent === 'Copy debug info').click();
-        await sleep(100);
-        const dbg = window.__clip || '';
-        check('debug info: the failed request and the game\'s message', dbg.includes('failed send: call to village 205 (game): Not enough resources available'), dbg);
-        check('debug info: raw answer', dbg.includes('raw: "Not enough resources available"'), dbg);
-        check('debug info: source never reported: sent amounts + overview snapshot', dbg.includes('source 204: sent 3894/0/0 (4 merchants); overview 30879/60779/719 (14 merchants); game reported none'), dbg);
-        check('debug info: source reported by an earlier answer', dbg.includes('source 301: sent 0/0/10813 (11 merchants); overview 33140/44720/50294 (46 merchants); game reported 900000/900000/887000 (33 merchants)'), dbg);
-        check('debug info: no village names or coordinates', !/Village|\d{3}\|\d{3}/.test(dbg), dbg);
         check('failed card marked, with the game\'s message', /✗ Failed/.test(card('205').textContent) && card('205').textContent.includes('Not enough resources available'), card('205').textContent);
         await sendAll(2); // #19: the cards after the failed one still send
         const posted = window.__posts.map((p) => String(p.params.village));
         check('cards after the failed one still send', posted.join() === '103,303,405,105,205,203,403'
           && ['203', '403'].every((id) => card(id).textContent.includes('✓ Sent')), posted);
-        $$('.pp-calc button')[0].click(); // a new plan: the record stays until the popup closes
-        await until(() => $$('.pp-card').length && !$$('.pp-calc button')[0].disabled);
-        $$('.pp-actions button').find((b) => b.textContent === 'Copy debug info').click();
-        await sleep(100);
-        check('debug info keeps the failure after Recalculate', (window.__clip || '').includes('failed send: call to village 205'));
       }
       throw 'done';
     }

@@ -17,7 +17,6 @@ import { storableNow } from './core/storable.js';
 import { solverInput } from './core/model.js';
 import { solve } from './core/solver.js';
 import { planView } from './core/plan-view.js';
-import { buildDebugInfo } from './core/debug-info.js';
 import { settingsStore, solverOptions } from './core/settings.js';
 import { parseAcademy, nobleTarget } from './core/noble-target.js';
 import { createPopup } from './ui/popup.js';
@@ -30,10 +29,7 @@ const AUTHOR = { name: 'markwalet', email: 'scripts@tw-tracker.net' };
 
 tw.register(t('scriptName'), true, AUTHOR.name, AUTHOR.email);
 
-/** Everything the debug summary may show; filled as we go (whitelisted in buildDebugInfo). */
-/** @type {Parameters<typeof buildDebugInfo>[0]} */
 const env = tw.env();
-const report = { env };
 /** @type {ReturnType<typeof parseWorldConfig> | null} */
 let config = null;
 let busy = false;
@@ -46,12 +42,9 @@ const popup = createPopup({
   show: tw.showDialog,
   storeUrl: tw.academyStoreUrl(),
   mobile: tw.isMobile(),
-  debugText: () => buildDebugInfo(report),
   toast: tw.toast,
   onCalculate: () => { calculate(); },
   post: tw.postMarket,
-  // Failed-send evidence, kept for "Copy debug info" until the popup closes (last 5).
-  onFailure: (f) => { report.failures = [...(report.failures || []), f].slice(-5); },
   settingsPanel: createSettingsPanel({
     t,
     get: () => settings,
@@ -61,7 +54,6 @@ const popup = createPopup({
 
 /** @param {unknown} err */
 function fail(err) {
-  report.error = String(/** @type {any} */ (err)?.message ?? err);
   console.error('[Noble Package Planner]', err);
   popup.render({ status: 'error' });
 }
@@ -85,7 +77,6 @@ const afterPaint = () => new Promise((resolve) => {
 function refused(gold) {
   const pre = checkPreconditions({ premium: env.premium, gold });
   if (pre.ok) return false;
-  report.refused = pre.reason;
   popup.render({ status: 'refused', reason: pre.reason });
   return true;
 }
@@ -102,7 +93,6 @@ async function start() {
     if (refused(null)) return false; // before any request
     const { xml, cached } = await tw.worldConfigXml();
     const parsed = parseWorldConfig(xml);
-    report.config = parsed;
     // Only a fresh fetch is stored: re-storing a cache read would renew its day forever.
     if (!cached && !parsed.warnings.length) tw.cacheWorldConfig(xml);
     if (refused(parsed.gold)) return false;
@@ -136,9 +126,6 @@ async function calculate() {
       loadOverview({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('buildings', p)), parse: buildingsEntries, expected: env.villages, label: 'buildings' }),
       loadIncoming({ fetchPage: (p) => tw.fetchText(tw.overviewUrl('trader', p)) }),
     ]);
-    report.prod = prod;
-    report.buildings = buildings;
-    report.incoming = incoming;
     // The group list for the dropdowns comes with the Production overview (no extra request).
     if (prod.groups?.length) settings = { ...settings, groups: prod.groups };
     saveSettings();
@@ -146,7 +133,6 @@ async function calculate() {
     const academyLevels = new Map([...buildings.byId].map(([id, b]) => [id, b.academy]));
     const mineLevels = new Map([...buildings.byId].flatMap(([id, b]) => (b.mines ? [[id, b.mines]] : [])));
     const storable = storableNow(villages, academyLevels, cfg.packageCost, receivers, incoming.byId);
-    report.result = storable;
 
     const warnings = [...cfg.warnings, ...prod.warnings, ...buildings.warnings, ...incoming.warnings];
     let target = null;
@@ -161,15 +147,9 @@ async function calculate() {
     popup.render({ status: 'calculating' });
     await afterPaint();
     const input = solverInput({ villages, academyLevels, mineLevels, incoming: incoming.byId, senders, receivers, config: cfg });
-    const t0 = performance.now();
     const limits = solverOptions(settings, target?.missing);
     const plan = solve(input.world, { ...input.options, ...limits });
-    const ms = Math.round(performance.now() - t0);
     const view = planView(plan, prod.byId, storable.packages);
-    report.plan = {
-      packages: plan.packages, cards: view.cards.length, transports: plan.transports.length,
-      merchants: plan.merchants, longestSeconds: plan.longestSeconds, ms,
-    };
 
     warnings.push(...input.warnings);
     if (storable.notInBuildings) warnings.push(fill(t('notInBuildings'), { n: storable.notInBuildings }));

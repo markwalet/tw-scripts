@@ -1,7 +1,7 @@
 // package-planner/core/overview.js — what every premium village overview has in common:
 // the column a header sorts by (`order=<key>` in the th link: language-independent),
 // the village count in the "Village (65)" header, the paging links, and a value-free
-// "shape" of a row for the debug summary, the village-group menu. Pure.
+// "shape" of a row (parser structure), the village-group menu. Pure.
 
 import { findAll, find, textOf, childElements, hasClass, is } from '../../shared/html.js';
 
@@ -55,7 +55,7 @@ export function pageNumbers(root) {
 }
 
 /**
- * A value-free description of a row, for the debug summary: per cell, its classes and
+ * A value-free description of a row (parser structure output): per cell, its classes and
  * the classes of nested elements, and its text with digits -> 9 and letters -> a.
  * Leaks no names, ids or numbers.
  * @param {El} tr

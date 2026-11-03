@@ -74,15 +74,8 @@ enough resources available" after 14 successful Request-resources clicks; the ev
 lost on the refresh. A solver fuzz run (400 generated worlds) never ships more than a source
 holds, so the overview snapshot and the source's real stock at click time diverged (cause
 unknown). Hence (#16):
-- **Evidence is kept automatically.** Every failed send adds a record to "Copy debug info"
-  (last 5, until the popup closes; survives Recalculate): action + target village id, the
-  game's message and raw answer (scrubbed; an HTTP error keeps only its status), and per
-  source village id of the plan's card: what was sent (`none` for a source the pre-check
-  dropped; plus the plan's amounts when the pre-check trimmed or dropped it), the overview
-  snapshot's resources + merchants, and the latest `resources_left` / `traders_free` the
-  game reported for it in earlier successful answers (or `none`), both as known at click
-  time.
-  Village ids only: no names, coordinates, player ids or tokens.
+- ~~Evidence kept in "Copy debug info"~~ — removed for the public release, together with
+  the "Copy debug info" button itself (failures show the game's message on the card).
 - **The game's own numbers are checked before each send** (§7).
 
 ## 2. Preconditions (refuse with a clear message otherwise)
@@ -473,7 +466,7 @@ The user has no way to hand us live pages up front, so three paste tests on thei
 validate what can't be checked offline. Other work carries on; results come back as fixes.
 
 1. After the tracer bullet: do the parsers read the real Production/Buildings overviews?
-   (check the "storable now" number; "Copy debug info" if off)
+   (check the "storable now" number)
 2. After the plan cards: is the plan plausible; do travel times match the market page?
 3. After sending: one real, small send; record what the game returns.
 

@@ -8,7 +8,7 @@
 import { h, injectStyle } from '../../shared/dom.js';
 import { fill, plural } from '../core/i18n.js';
 import { fmt, hm, hms } from '../core/plan-view.js';
-import { requestPayload, transportPayload, fallbackRows, leftAfter, checkCard, failureRecord } from '../core/send.js';
+import { requestPayload, transportPayload, fallbackRows, leftAfter, checkCard } from '../core/send.js';
 import { RES } from '../core/world-config.js';
 
 /** Click lock after each send (approved-scripts pattern): holding Enter = one send per lock. */
@@ -40,7 +40,6 @@ const CSS = `
 .pp-root .pp-short{color:#b5482b;font-size:11px}
 .pp-root .pp-res{white-space:nowrap}
 .pp-root .pp-res .icon{margin-right:2px}
-.pp-root textarea{width:100%;height:120px;font:11px monospace;margin-top:6px}
 .pp-mobile,.mobile .pp-root{width:100%}
 .pp-mobile .pp-cards,.mobile .pp-cards{max-height:none}
 .pp-mobile .pp-card,.mobile .pp-card,.pp-mobile .pp-row,.mobile .pp-row{grid-template-columns:minmax(0,1fr)}
@@ -77,19 +76,16 @@ const CSS = `
  *   show: (id: string, host: HTMLElement, onClose: () => void) => void,
  *   storeUrl: string,
  *   mobile: boolean,
- *   debugText: () => string,
  *   toast: (msg: string) => void,
  *   onCalculate: () => void,
  *   post: (action: 'call' | 'map_send', village: number, data: Record<string, number>) => Promise<Outcome>,
  *   settingsPanel: { element: () => HTMLElement, close: () => void },
- *   onFailure: (f: import('../core/send.js').Failure) => void,
  * }} deps
  */
-export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCalculate, post, settingsPanel, onFailure }) {
+export function createPopup({ t, show, storeUrl, mobile, toast, onCalculate, post, settingsPanel }) {
   injectStyle('pp-style', CSS);
   const host = h('div');
   let shown = false;
-  let debugOpen = false;
   let calculated = false;
   /** @type {View} */
   let view = { status: 'starting' };
@@ -143,12 +139,10 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     inFlight += 1;
     s.status.set(key, 'pending');
     const payload = req.action === 'call' ? requestPayload(req.sent, req.target) : transportPayload(req.sent[0]);
-    // What was known when the request went out (later answers or a new plan change both).
-    const known = { snapshot: view.status === 'done' ? view.places : new Map(), left: new Map(s.left) };
+    // The overview snapshot when the request went out (a new plan replaces it).
+    const snapshot = view.status === 'done' ? view.places : new Map();
     post(req.action, req.action === 'call' ? req.target : req.sent[0].from, payload).then((o) => {
       inFlight -= 1;
-      // Evidence first (also for an answer to an old plan): kept until the popup closes.
-      if (!o.ok) onFailure(failureRecord({ ...req, ...known, outcome: o }));
       // A failure that ends all sending applies whichever plan sent it.
       if (o.ok) gameErrors = 0;
       else if (o.reason !== 'game') stop ??= o;
@@ -158,7 +152,7 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
         if (o.ok) {
           s.status.set(key, 'sent');
           if (o.message) toast(o.message);
-          for (const l of leftAfter(req.sent, o.left, s.left, known.snapshot)) s.left.set(l.id, l);
+          for (const l of leftAfter(req.sent, o.left, s.left, snapshot)) s.left.set(l.id, l);
         } else {
           s.status.set(key, 'failed');
           if (o.reason === 'game') s.errors.set(key, o.message);
@@ -270,18 +264,6 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
       ]),
       rows ? h('div', { className: 'pp-rows' }, rows.length ? pendingFirst(rows, (r) => r.key).map(row) : [h('span', { className: 'pp-short', text: t('skippedNote') })]) : null,
     ];
-  }
-
-  async function copyDebug() {
-    const text = debugText();
-    try {
-      await navigator.clipboard.writeText(text);
-      toast(t('copied'));
-      debugOpen = false;
-    } catch {
-      debugOpen = true; // no clipboard access: show the text to copy by hand
-    }
-    render(view);
   }
 
   const storeLink = () => h('a', { className: 'pp-link', href: storeUrl, text: t('academyStore') });
@@ -411,11 +393,6 @@ export function createPopup({ t, show, storeUrl, mobile, debugText, toast, onCal
     main.replaceChildren(...[
       calculateButton(),
       ...body().filter(Boolean),
-      h('div', { className: 'pp-actions' }, [
-        h('button', { className: 'btn', type: 'button', text: t('copyDebug'), on: { click: copyDebug } }),
-      ]),
-      debugOpen ? h('p', { className: 'pp-muted', text: t('copyManual') }) : null,
-      debugOpen ? h('textarea', { readonly: 'readonly', text: debugText() }) : null,
     ].filter(Boolean));
     if (!shown) {
       shown = true; // once: if the user closes it, later renders just update a detached host

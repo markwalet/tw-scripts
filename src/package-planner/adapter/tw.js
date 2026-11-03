@@ -36,7 +36,7 @@ export const market = () => String(w.game_data?.market ?? 'en');
 
 const gd = () => w.game_data || {};
 
-/** Facts about the session the planner needs (and the debug summary may show). */
+/** Facts about the session the planner needs. */
 export function env() {
   const g = gd();
   const villages = parseInt(g.player?.villages, 10);
