@@ -11,7 +11,6 @@
  *   pages: number[],
  *   groups?: Array<[number, string]>,   the village-group menu (Production overview)
  *   warnings: string[],
- *   structure: object,
  * }} OverviewPage
  */
 
@@ -30,13 +29,11 @@ export async function loadOverview({ fetchPage, parse, expected = null, label = 
   const byId = new Map(first.entries);
   const warnings = [...first.warnings];
   const want = Math.max(first.expectedCount ?? 0, expected ?? 0) || null;
-  let pagesFetched = 0;
 
   if (want != null && byId.size < want && first.pages.length) {
     warnings.push(`${label}: "all" view held ${byId.size} of ${want} villages, read it paged (${first.pages.length} pages)`);
     for (const p of first.pages) {
       const page = parse(await fetchPage(p));
-      pagesFetched += 1;
       for (const [id, v] of page.entries) if (!byId.has(id)) byId.set(id, v);
       for (const w of page.warnings) if (!warnings.includes(w)) warnings.push(w);
     }
@@ -47,6 +44,5 @@ export async function loadOverview({ fetchPage, parse, expected = null, label = 
     byId,
     groups: first.groups,
     warnings,
-    structure: { ...first.structure, expectedCount: first.expectedCount, pagesLinked: first.pages.length, pagesFetched, read: byId.size },
   };
 }

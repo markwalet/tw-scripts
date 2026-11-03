@@ -9,7 +9,7 @@
 // not carried is absent. No incoming merchants = no #trades_table. Never reads text labels.
 
 import { parseHtml, find, findAll, textOf, hasClass, intOf, is } from '../../shared/html.js';
-import { pageNumbers, rowShape } from './overview.js';
+import { pageNumbers } from './overview.js';
 import { RES } from './world-config.js';
 
 /** @typedef {[number, number, number]} Res */
@@ -36,7 +36,7 @@ export function parseIncoming(html) {
   const warnings = [];
   const pages = pageNumbers(root);
   const table = find(root, is({ tag: 'table', id: 'trades_table' }));
-  if (!table) return { transports, pages, warnings, structure: { tableFound: false, rows: 0 } };
+  if (!table) return { transports, pages, warnings };
 
   const villageLink = (/** @type {El} */ e) => e.tag === 'a' && VILLAGE_LINK.test(e.attrs.href || '');
   const rows = findAll(table, (el) => el.tag === 'tr' && !!find(el, villageLink));
@@ -56,7 +56,7 @@ export function parseIncoming(html) {
     transports.push({ key: transportKey(tr, to, res), to, res });
   }
   if (skipped) warnings.push(`trader: ${skipped} of ${rows.length} rows skipped (amount not readable)`);
-  return { transports, pages, warnings, structure: { tableFound: true, rows: rows.length, firstRow: rows[0] ? rowShape(rows[0]) : null } };
+  return { transports, pages, warnings };
 }
 
 /**
@@ -83,6 +83,5 @@ export async function loadIncoming({ fetchPage }) {
   return {
     byId,
     warnings: [...new Set(parsed.flatMap((x) => x.warnings))],
-    structure: { ...first.structure, pagesLinked: first.pages.length, transports: seen.size, targets: byId.size },
   };
 }

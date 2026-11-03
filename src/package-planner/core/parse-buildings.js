@@ -8,7 +8,7 @@
 // Mines (b_wood/b_stone/b_iron) give the production rate for the warehouse margin (§5).
 
 import { parseHtml, find, findAll, textOf, hasClass, intOf, is } from '../../shared/html.js';
-import { headerVillageCount, pageNumbers, rowShape } from './overview.js';
+import { headerVillageCount, pageNumbers } from './overview.js';
 
 /** @typedef {import('../../shared/html.js').El} El */
 
@@ -40,7 +40,7 @@ export function parseBuildings(html) {
   const table = find(root, is({ tag: 'table', id: 'buildings_table' }));
   if (!table) {
     warnings.push('buildings: buildings table not found');
-    return { levels, mines, expectedCount: null, pages, warnings, structure: { tableFound: false } };
+    return { levels, mines, expectedCount: null, pages, warnings };
   }
 
   const rows = findAll(table, (el) => el.tag === 'tr' && Number.isFinite(villageId(el)));
@@ -64,11 +64,6 @@ export function parseBuildings(html) {
     expectedCount: headerVillageCount(table),
     pages,
     warnings,
-    structure: {
-      tableFound: true,
-      rows: rows.length,
-      firstRow: rows[0] ? rowShape(rows[0]) : null,
-    },
   };
 }
 

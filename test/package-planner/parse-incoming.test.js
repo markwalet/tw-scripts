@@ -26,7 +26,7 @@ test('parseIncoming: a row without a cancel checkbox is keyed by its content, no
 
 test('parseIncoming: no incoming merchants (no #trades_table, real empty state) -> nothing, no warning', () => {
   const empty = '<table class="vis"><tbody><tr><td>Your incoming merchants: 0</td></tr></tbody></table>';
-  assert.deepEqual(parseIncoming(empty), { transports: [], pages: [], warnings: [], structure: { tableFound: false, rows: 0 } });
+  assert.deepEqual(parseIncoming(empty), { transports: [], pages: [], warnings: [] });
 });
 
 test('loadIncoming: sums what is on the way per target village, one request', async () => {
@@ -77,5 +77,4 @@ test('loadIncoming: TW honours page=-1 (every row) and still links the pages -> 
   const pages = { [-1]: page(rowsAt[0], end), 0: page(rowsAt[0], rowsAt[2]), 1: page(rowsAt[2], end) };
   const r = await loadIncoming({ fetchPage: async (p) => pages[p] });
   assert.deepEqual([...r.byId], [[2005, [28000, 30000, 1000]], [2001, [5000, 4000, 2500]]]);
-  assert.equal(r.structure.transports, 3);
 });

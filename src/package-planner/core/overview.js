@@ -1,7 +1,7 @@
 // package-planner/core/overview.js — what every premium village overview has in common:
 // the column a header sorts by (`order=<key>` in the th link: language-independent),
-// the village count in the "Village (65)" header, the paging links, and a value-free
-// "shape" of a row (parser structure), the village-group menu. Pure.
+// the village count in the "Village (65)" header, the paging links and the village-group
+// menu. Pure.
 
 import { findAll, find, textOf, childElements, hasClass, is } from '../../shared/html.js';
 
@@ -52,26 +52,6 @@ export function pageNumbers(root) {
     if (m) set.add(parseInt(m[1], 10));
   }
   return [...set].sort((a, b) => a - b);
-}
-
-/**
- * A value-free description of a row (parser structure output): per cell, its classes and
- * the classes of nested elements, and its text with digits -> 9 and letters -> a.
- * Leaks no names, ids or numbers.
- * @param {El} tr
- */
-export function rowShape(tr) {
-  return childElements(tr)
-    .map((cell) => {
-      const classes = [cell, ...findAll(cell, () => true)]
-        .map((e) => (e.attrs.class || '').trim())
-        .filter(Boolean)
-        .flatMap((c) => c.split(/\s+/))
-        .filter((c) => !/\d{2,}/.test(c)); // drop per-village classes like village_123
-      const text = textOf(cell).replace(/\s+/g, ' ').trim().replace(/\d+/g, '9').replace(/[^\d\s9.,:/|()%+-]+/g, 'a');
-      return `${cell.tag}[${[...new Set(classes)].join(' ')}]"${text.slice(0, 24)}"`;
-    })
-    .join(' ');
 }
 
 /**
